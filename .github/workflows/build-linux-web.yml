@@ -1,0 +1,102 @@
+name: Build AionUi web version (Linux x64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "AionCore/**"
+      - "AionUi/**"
+      - ".github/workflows/build-linux-web.yml"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux-web:
+    name: Build aioncore (linux) + web tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------
+      # 1. Backend: aioncore (patched: find_by_model global fallback)
+      # ---------------------------------------------------------------
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95.0"
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            AionCore/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-linux-${{ hashFiles('AionCore/Cargo.lock') }}
+
+      - name: Build aioncore release binary
+        working-directory: AionCore
+        run: cargo build --release --bin aioncore
+
+      - name: Prepare managed-resources bundle
+        run: |
+          exe="$PWD/AionCore/target/release/aioncore"
+          bundle="$RUNNER_TEMP/aioncore-bundle"
+          mkdir -p "$bundle"
+          cp "$exe" "$bundle/aioncore"
+          "$exe" --data-dir "$RUNNER_TEMP/aioncore-data" prepare-managed-resources --bundle-out "$bundle/managed-resources"
+          echo "BUNDLE_DIR=$bundle" >> "$GITHUB_ENV"
+          ls -la "$bundle"
+
+      # ---------------------------------------------------------------
+      # 2. Frontend: renderer build + pack web tarball
+      # ---------------------------------------------------------------
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-linux-${{ hashFiles('AionUi/bun.lock') }}
+
+      - name: Install frontend dependencies
+        working-directory: AionUi
+        run: bun install --frozen-lockfile
+
+      - name: Build renderer (electron-vite)
+        working-directory: AionUi
+        run: bunx electron-vite build --config packages/desktop/electron.vite.config.ts
+
+      - name: Pack web tarball
+        working-directory: AionUi
+        env:
+          AIONUI_BACKEND_LOCAL_BUNDLE_DIR: ${{ env.BUNDLE_DIR }}
+        run: node scripts/pack-web-cli.js
+
+      - name: Locate tarball
+        id: locate
+        run: |
+          tb=$(ls AionUi/dist-web-cli/*.tar.gz | head -1)
+          test -n "$tb"
+          echo "tarball=$tb" >> "$GITHUB_OUTPUT"
+          cat "$tb.sha256"
+
+      - name: Upload web tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: aionui-web-linux-x64
+          path: ${{ steps.locate.outputs.tarball }}*
+          if-no-files-found: error
+          retention-days: 30
