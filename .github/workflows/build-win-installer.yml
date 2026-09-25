@@ -1,0 +1,111 @@
+name: Build AionUi local installer (Windows x64)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows-installer:
+    name: Build aioncore + NSIS installer
+    runs-on: windows-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------
+      # 1. Backend: aioncore.exe (patched: find_by_model global fallback)
+      # ---------------------------------------------------------------
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95.0"
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            AionCore/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('AionCore/Cargo.lock') }}
+
+      - name: Build aioncore release binary
+        working-directory: AionCore
+        run: cargo build --release --target x86_64-pc-windows-msvc --bin aioncore
+
+      - name: Verify aioncore.exe
+        shell: pwsh
+        run: |
+          $exe = "AionCore/target/x86_64-pc-windows-msvc/release/aioncore.exe"
+          if (!(Test-Path $exe)) { throw "aioncore.exe missing" }
+          Get-Item $exe | Format-List Name, Length
+
+      # ---------------------------------------------------------------
+      # 2. Generate managed-resources bundle (self-contained backend)
+      # ---------------------------------------------------------------
+      - name: Prepare managed-resources bundle
+        shell: pwsh
+        run: |
+          $exe = "AionCore/target/x86_64-pc-windows-msvc/release/aioncore.exe"
+          $bundle = Join-Path $env:RUNNER_TEMP "aioncore-bundle"
+          New-Item -ItemType Directory -Force -Path $bundle | Out-Null
+          Copy-Item $exe (Join-Path $bundle "aioncore.exe")
+          & $exe --data-dir (Join-Path $env:RUNNER_TEMP "aioncore-data") prepare-managed-resources --bundle-out (Join-Path $bundle "managed-resources")
+          if ($LASTEXITCODE -ne 0) { throw "prepare-managed-resources failed with $LASTEXITCODE" }
+          Get-ChildItem -Recurse $bundle | Select-Object -First 50 FullName
+          "BUNDLE_DIR=$bundle" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # ---------------------------------------------------------------
+      # 3. Frontend: bun install + electron-builder NSIS installer
+      # ---------------------------------------------------------------
+      - name: Setup bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('AionUi/bun.lock') }}
+
+      - name: Install frontend dependencies
+        working-directory: AionUi
+        run: bun install --frozen-lockfile
+
+      - name: Build Windows installer
+        working-directory: AionUi
+        shell: pwsh
+        env:
+          CI: "true"
+          AIONUI_BACKEND_LOCAL_BUNDLE_DIR: ${{ env.BUNDLE_DIR }}
+        run: node scripts/build-with-builder.js auto --win --x64
+
+      - name: Locate installer
+        id: locate
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "AionUi/out" -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notmatch "Uninstaller|unins" } |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (!$exe) { throw "Installer exe not found under AionUi/out" }
+          $exe | Format-List FullName, Length, LastWriteTime
+          "installer=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AionUi-local-win-x64
+          path: ${{ steps.locate.outputs.installer }}
+          if-no-files-found: error
+          retention-days: 30
