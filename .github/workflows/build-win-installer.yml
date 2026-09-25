@@ -5,6 +5,10 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "AionCore/**"
+      - "AionUi/**"
+      - ".github/workflows/build-win-installer.yml"
 
 permissions:
   contents: read
