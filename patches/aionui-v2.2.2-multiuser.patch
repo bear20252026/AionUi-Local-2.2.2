@@ -1,18 +1,15 @@
-diff --git a/packages/web-host/src/backend-launcher.ts b/packages/web-host/src/backend-launcher.ts
-index 7d88140..95a9d29 100644
---- a/packages/web-host/src/backend-launcher.ts
-+++ b/packages/web-host/src/backend-launcher.ts
-@@ -665,7 +665,9 @@ export class BackendLifecycleManager {
-     const args = buildSpawnArgs({
-       port: this._port,
-       dbPath,
--      local: true,
-+      // Upstream hardcodes single-user local mode for the hosted web backend;
-+      // per-user JWT login (identity_mode=webui) is opt-in via AIONUI_MULTIUSER=1.
-+      local: process.env.AIONUI_MULTIUSER !== '1',
-       parentPid: process.pid,
-       logDir,
-       workDir: dirs?.workDir,
+diff --git a/packages/desktop/electron.vite.config.ts b/packages/desktop/electron.vite.config.ts
+index de31cae..0296bee 100644
+--- a/packages/desktop/electron.vite.config.ts
++++ b/packages/desktop/electron.vite.config.ts
+@@ -252,6 +252,7 @@ export default defineConfig(({ mode }) => {
+         rollupOptions: {
+           input: {
+             index: resolve(rendererRoot, 'index.html'),
++            admin: resolve(rendererRoot, 'admin.html'),
+             pet: resolve(rendererRoot, 'pet/pet.html'),
+             'pet-hit': resolve(rendererRoot, 'pet/pet-hit.html'),
+             'pet-confirm': resolve(rendererRoot, 'pet/pet-confirm.html'),
 diff --git a/packages/desktop/src/common/adapter/httpBridge.ts b/packages/desktop/src/common/adapter/httpBridge.ts
 index 11df91d..871635c 100644
 --- a/packages/desktop/src/common/adapter/httpBridge.ts
@@ -145,8 +142,132 @@ index cf0c2d8..7fae216 100644
    const response = await fetch(url, {
      method,
      headers,
+diff --git a/packages/desktop/src/common/config/i18n-config.json b/packages/desktop/src/common/config/i18n-config.json
+index 3f214b5..5a04b1b 100644
+--- a/packages/desktop/src/common/config/i18n-config.json
++++ b/packages/desktop/src/common/config/i18n-config.json
+@@ -35,6 +35,7 @@
+     "guid",
+     "agent",
+     "team",
+-    "pet"
++    "pet",
++    "admin"
+   ]
+ }
+diff --git a/packages/desktop/src/renderer/admin.html b/packages/desktop/src/renderer/admin.html
+new file mode 100644
+index 0000000..68dbb64
+--- /dev/null
++++ b/packages/desktop/src/renderer/admin.html
+@@ -0,0 +1,45 @@
++<!doctype html>
++<html data-theme="light" data-color-scheme="default">
++  <head>
++    <meta charset="UTF-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <meta name="application-name" content="AionUi Admin" />
++    <meta name="theme-color" content="#4E5969" />
++    <link rel="icon" type="image/png" href="./pwa/icon-192.png" />
++    <title>AionUi Admin</title>
++    <script>
++      // Restore theme synchronously to avoid a flash of the wrong palette.
++      (function () {
++        try {
++          var theme = localStorage.getItem('__aionui_theme');
++          if (theme) document.documentElement.setAttribute('data-theme', theme);
++        } catch (e) {}
++      })();
++    </script>
++    <style>
++      html,
++      body,
++      #root {
++        width: 100%;
++        height: 100%;
++        margin: 0;
++        padding: 0;
++      }
++      body {
++        overflow: hidden;
++        background: var(--color-bg-2, #f7f8fa);
++      }
++    </style>
++  </head>
++  <body>
++    <script>
++      // Arco reads the theme from the body attribute.
++      try {
++        var t = localStorage.getItem('__aionui_theme');
++        if (t) document.body.setAttribute('arco-theme', t);
++      } catch (e) {}
++    </script>
++    <div id="root"></div>
++    <script type="module" src="./admin.tsx"></script>
++  </body>
++</html>
+diff --git a/packages/desktop/src/renderer/admin.tsx b/packages/desktop/src/renderer/admin.tsx
+new file mode 100644
+index 0000000..aaaa7c1
+--- /dev/null
++++ b/packages/desktop/src/renderer/admin.tsx
+@@ -0,0 +1,54 @@
++/**
++ * @license
++ * Copyright 2025 AionUi (aionui.com)
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import React from 'react';
++import { createRoot } from 'react-dom/client';
++
++// Arco Design — must be configured for React 19 before the first render.
++import '@arco-design/web-react/es/_util/react-19-adapter';
++import '@arco-design/web-react/dist/css/arco.css';
++import { ConfigProvider } from '@arco-design/web-react';
++import enUS from '@arco-design/web-react/es/locale/en-US';
++import jaJP from '@arco-design/web-react/es/locale/ja-JP';
++import zhCN from '@arco-design/web-react/es/locale/zh-CN';
++import zhTW from '@arco-design/web-react/es/locale/zh-TW';
++
++// Shared theme tokens so the console follows the app's light/dark palette.
++import './styles/arco-override.css';
++import './styles/themes/index.css';
++
++// Backend config is the source of truth for the interface language.
++import { configService } from '@/common/config/configService';
++configService.initialize().catch((err) => {
++  console.error('Failed to initialize config:', err);
++});
++
++// i18next bootstrap (all admin copy is translated through it).
++import './services/i18n';
++import i18next from 'i18next';
++
++import { AdminApp } from './pages/admin/AdminApp';
++
++// Arco's own widget strings (date pickers, pagination) are locale-scoped; every
++// visible string in the console itself comes from i18next, so anything outside
++// this map safely falls back to English widget internals.
++const ARCO_LOCALES: Record<string, typeof enUS> = {
++  'zh-CN': zhCN,
++  'zh-TW': zhTW,
++  'ja-JP': jaJP,
++  'en-US': enUS,
++};
++
++const container = document.getElementById('root');
++if (!container) {
++  throw new Error('Admin root container missing');
++}
++
++createRoot(container).render(
++  <ConfigProvider locale={ARCO_LOCALES[i18next.resolvedLanguage ?? ''] ?? enUS}>
++    <AdminApp />
++  </ConfigProvider>
++);
 diff --git a/packages/desktop/src/renderer/hooks/context/AuthContext.tsx b/packages/desktop/src/renderer/hooks/context/AuthContext.tsx
-index 6e56c94..7635dac 100644
+index 6e56c94..70f3673 100644
 --- a/packages/desktop/src/renderer/hooks/context/AuthContext.tsx
 +++ b/packages/desktop/src/renderer/hooks/context/AuthContext.tsx
 @@ -1,7 +1,9 @@
@@ -160,7 +281,29 @@ index 6e56c94..7635dac 100644
  const withCsrfToken = <T extends Record<string, unknown>>(data: T): T => data;
  const hasValidCsrfToken = (): boolean => true;
  const clearCookie = (_name: string, _path?: string): void => {};
-@@ -277,11 +279,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
+@@ -64,7 +66,10 @@ function clearAuthCache(): void {
+     // Clear localStorage auth-related items, plus per-user UI state that must not
+     // leak across accounts. Preview scopes are keyed by project id and hold file
+     // content, so leaving them behind would show the next user the previous one's
+-    // open tabs — and nothing else ever cleaned them up.
++    // open tabs — and nothing else ever cleaned them up. The conversation
++    // unread flags and history-search keywords carry another account's
++    // conversation ids/titles, so they go too.
++    const EXACT_KEYS_TO_REMOVE = ['conversation-manual-unread-ids', 'conversation.historySearch.recentKeywords'];
+     const keysToRemove: string[] = [];
+     for (let i = 0; i < localStorage.length; i++) {
+       const key = localStorage.key(i);
+@@ -73,7 +78,8 @@ function clearAuthCache(): void {
+         (key.includes('auth') ||
+           key.includes('csrf') ||
+           key.includes('token') ||
+-          key.startsWith(PREVIEW_SCOPE_KEY_PREFIX))
++          key.startsWith(PREVIEW_SCOPE_KEY_PREFIX) ||
++          EXACT_KEYS_TO_REMOVE.includes(key))
+       ) {
+         keysToRemove.push(key);
+       }
+@@ -277,11 +283,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
      }
  
      try {
@@ -177,6 +320,779 @@ index 6e56c94..7635dac 100644
          },
          credentials: 'include',
          body: JSON.stringify(withCsrfToken({})),
+diff --git a/packages/desktop/src/renderer/pages/admin/AdminApp.module.css b/packages/desktop/src/renderer/pages/admin/AdminApp.module.css
+new file mode 100644
+index 0000000..fc9a989
+--- /dev/null
++++ b/packages/desktop/src/renderer/pages/admin/AdminApp.module.css
+@@ -0,0 +1,89 @@
++.shell {
++  display: flex;
++  flex-direction: column;
++  width: 100%;
++  height: 100%;
++  background: var(--bg-1);
++  color: var(--text-primary);
++}
++
++.topbar {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  height: 52px;
++  padding: 0 20px;
++  background: var(--bg-base);
++  border-bottom: 1px solid var(--border-base);
++}
++
++.brand {
++  display: flex;
++  align-items: baseline;
++  gap: 8px;
++}
++
++.brandMark {
++  font-size: 16px;
++  font-weight: 600;
++  letter-spacing: 0.4px;
++}
++
++.brandSub {
++  font-size: 13px;
++  color: var(--text-secondary);
++}
++
++.me {
++  font-size: 13px;
++  color: var(--text-secondary);
++}
++
++.alert {
++  margin: 12px 20px 0;
++}
++
++.body {
++  display: flex;
++  gap: 16px;
++  flex: 1;
++  min-height: 0;
++  padding: 16px 20px 20px;
++}
++
++.users {
++  width: 420px;
++  flex: none;
++  overflow: auto;
++}
++
++.providers {
++  flex: 1;
++  min-width: 0;
++  overflow: auto;
++}
++
++.key {
++  font-size: 12px;
++  font-family: var(--font-mono);
++  word-break: break-all;
++}
++
++.modalHint {
++  margin-bottom: 12px;
++}
++
++.centered {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  width: 100%;
++  height: 100%;
++  background: var(--bg-1);
++}
++
++.centeredCard {
++  width: 380px;
++  padding: 8px;
++  text-align: center;
++}
+diff --git a/packages/desktop/src/renderer/pages/admin/AdminApp.tsx b/packages/desktop/src/renderer/pages/admin/AdminApp.tsx
+new file mode 100644
+index 0000000..2907c24
+--- /dev/null
++++ b/packages/desktop/src/renderer/pages/admin/AdminApp.tsx
+@@ -0,0 +1,567 @@
++/**
++ * @license
++ * Copyright 2025 AionUi (aionui.com)
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
++
++import {
++  Alert,
++  Button,
++  Card,
++  Form,
++  Input,
++  Message,
++  Modal,
++  Select,
++  Space,
++  Switch,
++  Table,
++  Tag,
++  Typography,
++} from '@arco-design/web-react';
++import { useTranslation } from 'react-i18next';
++
++import { BackendHttpError, httpDelete, httpGet, httpPost, httpPut } from '@/common/adapter/httpBridge';
++
++import styles from './AdminApp.module.css';
++
++// ---------------------------------------------------------------------------
++// Types — mirror `AdminUserResponse` / `ProviderResponse` in aionui-api-types.
++// ---------------------------------------------------------------------------
++
++type AdminUser = {
++  id: string;
++  username: string;
++  user_type: string;
++  status: string;
++  created_at: number;
++  last_login: number | null;
++  is_primary: boolean;
++};
++
++type Provider = {
++  id: string;
++  platform: string;
++  name: string;
++  base_url: string;
++  api_key: string;
++  enabled: boolean;
++  created_at?: number;
++  updated_at?: number;
++};
++
++type ProviderFormValues = {
++  platform: string;
++  name: string;
++  base_url: string;
++  api_key: string;
++  enabled: boolean;
++};
++
++type GateState = 'loading' | 'anonymous' | 'forbidden' | 'ready';
++
++type ProviderDraft = { mode: 'create'; userId: string } | { mode: 'edit'; userId: string; provider: Provider } | null;
++
++const PLATFORM_OPTIONS = ['openai', 'anthropic', 'deepseek', 'gemini', 'moonshot', 'qwen', 'ollama', 'custom'].map(
++  (value) => ({ value, label: value })
++);
++
++const statusOf = (error: unknown): number | undefined => (error instanceof BackendHttpError ? error.status : undefined);
++
++const formatTime = (ms: number | null | undefined): string => {
++  if (!ms) return '—';
++  // Backend timestamps are milliseconds; tolerate seconds on older rows.
++  const value = ms < 1e12 ? ms * 1000 : ms;
++  const date = new Date(value);
++  if (Number.isNaN(date.getTime())) return '—';
++  return date.toLocaleString();
++};
++
++// ---------------------------------------------------------------------------
++// Screen
++// ---------------------------------------------------------------------------
++
++export function AdminApp() {
++  const { t } = useTranslation();
++  const [gate, setGate] = useState<GateState>('loading');
++  const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
++  const [users, setUsers] = useState<AdminUser[]>([]);
++  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
++  const [providers, setProviders] = useState<Provider[]>([]);
++  const [providersLoading, setProvidersLoading] = useState(false);
++  const [draft, setDraft] = useState<ProviderDraft>(null);
++  const [saving, setSaving] = useState(false);
++  const [pageError, setPageError] = useState<string | null>(null);
++
++  useEffect(() => {
++    document.title = `${t('admin.brand.mark')} · ${t('admin.brand.sub')}`;
++  }, [t]);
++
++  const loadUsers = useCallback(async () => {
++    try {
++      const list = await httpGet<AdminUser[]>('/api/admin/users').invoke();
++      setUsers(list ?? []);
++      setPageError(null);
++      setSelectedUserId((current) => current ?? list?.[0]?.id ?? null);
++      return true;
++    } catch (error) {
++      const status = statusOf(error);
++      if (status === 401) setGate('anonymous');
++      else if (status === 403) setGate('forbidden');
++      else setPageError(t('admin.notice.usersLoad'));
++      return false;
++    }
++  }, [t]);
++
++  // Gate: who am I, and may I use the console at all?
++  // `/api/system/current-user` is the identity probe that works in every mode:
++  // it answers from the local default account when there is no login, and from
++  // the JWT session (401 without one) in multi-user WebUI mode.
++  useEffect(() => {
++    let cancelled = false;
++    void (async () => {
++      try {
++        const resp = await fetch('/api/system/current-user');
++        if (!resp.ok) {
++          if (!cancelled) setGate('anonymous');
++          return;
++        }
++        const body = (await resp.json()) as { data?: { id: string; username: string } };
++        if (cancelled) return;
++        if (body.data) setCurrentUser(body.data);
++        const ok = await loadUsers();
++        if (!cancelled && ok) setGate('ready');
++      } catch {
++        if (!cancelled) setGate('anonymous');
++      }
++    })();
++    return () => {
++      cancelled = true;
++    };
++  }, [loadUsers]);
++
++  // Providers follow the selected account.
++  useEffect(() => {
++    if (gate !== 'ready' || !selectedUserId) {
++      setProviders([]);
++      return;
++    }
++    let cancelled = false;
++    setProvidersLoading(true);
++    void httpGet<Provider[]>(`/api/admin/users/${encodeURIComponent(selectedUserId)}/providers`)
++      .invoke()
++      .then((list) => {
++        if (!cancelled) {
++          setProviders(list ?? []);
++          setPageError(null);
++        }
++      })
++      .catch((error: unknown) => {
++        if (cancelled) return;
++        const status = statusOf(error);
++        if (status === 401) setGate('anonymous');
++        else if (status === 403) setGate('forbidden');
++        else setPageError(t('admin.notice.providersLoad'));
++      })
++      .finally(() => {
++        if (!cancelled) setProvidersLoading(false);
++      });
++    return () => {
++      cancelled = true;
++    };
++  }, [gate, selectedUserId, t]);
++
++  const selectedUser = useMemo(() => users.find((user) => user.id === selectedUserId) ?? null, [users, selectedUserId]);
++
++  const refreshProviders = useCallback(async () => {
++    if (!selectedUserId) return;
++    setProvidersLoading(true);
++    try {
++      const list = await httpGet<Provider[]>(
++        `/api/admin/users/${encodeURIComponent(selectedUserId)}/providers`
++      ).invoke();
++      setProviders(list ?? []);
++      setPageError(null);
++    } catch {
++      setPageError(t('admin.notice.providersLoad'));
++    } finally {
++      setProvidersLoading(false);
++    }
++  }, [selectedUserId, t]);
++
++  const handleGateError = useCallback((error: unknown) => {
++    const status = statusOf(error);
++    if (status === 401) setGate('anonymous');
++    else if (status === 403) setGate('forbidden');
++  }, []);
++
++  const saveProvider = useCallback(
++    async (values: ProviderFormValues) => {
++      if (!draft) return;
++      setSaving(true);
++      try {
++        if (draft.mode === 'create') {
++          await httpPost<Provider, ProviderFormValues>(
++            `/api/admin/users/${encodeURIComponent(draft.userId)}/providers`
++          ).invoke(values);
++          Message.success(t('admin.message.created'));
++        } else {
++          await httpPut<Provider, ProviderFormValues>(
++            `/api/admin/users/${encodeURIComponent(draft.userId)}/providers/${encodeURIComponent(draft.provider.id)}`
++          ).invoke(values);
++          Message.success(t('admin.message.updated'));
++        }
++        setDraft(null);
++        await refreshProviders();
++      } catch (error) {
++        const status = statusOf(error);
++        if (status === 401 || status === 403) {
++          handleGateError(error);
++          if (status === 403) Message.error(t('admin.notice.forbidden'));
++        } else {
++          Message.error(t('admin.notice.saveFailed'));
++        }
++      } finally {
++        setSaving(false);
++      }
++    },
++    [draft, handleGateError, refreshProviders, t]
++  );
++
++  const removeProvider = useCallback(
++    (provider: Provider) => {
++      if (!selectedUserId) return;
++      Modal.confirm({
++        title: t('admin.deleteDialog.title'),
++        content: t('admin.deleteDialog.content', { name: provider.name }),
++        okText: t('admin.deleteDialog.ok'),
++        cancelText: t('admin.modal.cancel'),
++        okButtonProps: { status: 'danger' },
++        onOk: async () => {
++          try {
++            await httpDelete<void>(
++              `/api/admin/users/${encodeURIComponent(selectedUserId)}/providers/${encodeURIComponent(provider.id)}`
++            ).invoke();
++            Message.success(t('admin.message.deleted'));
++            setProviders((current) => current.filter((item) => item.id !== provider.id));
++          } catch (error) {
++            const status = statusOf(error);
++            if (status === 401 || status === 403) handleGateError(error);
++            else Message.error(t('admin.notice.deleteFailed'));
++          }
++        },
++      });
++    },
++    [handleGateError, selectedUserId, t]
++  );
++
++  const logout = useCallback(async () => {
++    try {
++      const token = document.cookie.match(/(?:^|;\s*)aionui-csrf-token=([^;]*)/);
++      await fetch('/logout', {
++        method: 'POST',
++        headers: token ? { 'x-csrf-token': decodeURIComponent(token[1]) } : undefined,
++      });
++    } finally {
++      window.location.href = '/';
++    }
++  }, []);
++
++  if (gate === 'loading') {
++    return <Centered notice={t('admin.gate.loading')} />;
++  }
++
++  if (gate === 'anonymous') {
++    return (
++      <Centered
++        notice={t('admin.gate.anonymous')}
++        action={
++          <Button type='primary' onClick={() => window.location.assign('/')}>
++            {t('admin.gate.anonymousAction')}
++          </Button>
++        }
++      />
++    );
++  }
++
++  if (gate === 'forbidden') {
++    return (
++      <Centered
++        notice={t('admin.gate.forbidden')}
++        action={
++          <Button type='primary' onClick={() => window.location.assign('/')}>
++            {t('admin.gate.forbiddenAction')}
++          </Button>
++        }
++      />
++    );
++  }
++
++  const userColumns = [
++    {
++      title: t('admin.users.account'),
++      dataIndex: 'username',
++      render: (value: string, record: AdminUser) => (
++        <Space size={4}>
++          <span>{value || '—'}</span>
++          {record.is_primary && <Tag color='arcoblue'>{t('admin.users.adminTag')}</Tag>}
++        </Space>
++      ),
++    },
++    {
++      title: t('admin.users.status'),
++      dataIndex: 'status',
++      render: (value: string) => (
++        <Tag color={value === 'active' ? 'green' : 'gray'}>
++          {value === 'active' ? t('admin.users.active') : t('admin.users.disabled')}
++        </Tag>
++      ),
++    },
++    {
++      title: t('admin.users.lastLogin'),
++      dataIndex: 'last_login',
++      render: (value: number | null) => formatTime(value),
++    },
++  ];
++
++  const providerColumns = [
++    { title: t('admin.providers.name'), dataIndex: 'name' },
++    { title: t('admin.providers.platform'), dataIndex: 'platform', width: 110 },
++    { title: t('admin.providers.baseUrl'), dataIndex: 'base_url', ellipsis: true },
++    {
++      title: t('admin.providers.apiKey'),
++      dataIndex: 'api_key',
++      width: 200,
++      render: (value: string) => <code className={styles.key}>{value}</code>,
++    },
++    {
++      title: t('admin.providers.enabled'),
++      dataIndex: 'enabled',
++      width: 80,
++      render: (value: boolean) => (
++        <Tag color={value ? 'green' : 'gray'}>{value ? t('admin.providers.yes') : t('admin.providers.no')}</Tag>
++      ),
++    },
++    {
++      title: '',
++      width: 140,
++      render: (_: unknown, provider: Provider) => (
++        <Space size={4}>
++          <Button
++            size='mini'
++            onClick={() => selectedUserId && setDraft({ mode: 'edit', userId: selectedUserId, provider })}
++          >
++            {t('admin.providers.edit')}
++          </Button>
++          <Button size='mini' status='danger' onClick={() => removeProvider(provider)}>
++            {t('admin.providers.delete')}
++          </Button>
++        </Space>
++      ),
++    },
++  ];
++
++  return (
++    <div className={styles.shell}>
++      <header className={styles.topbar}>
++        <div className={styles.brand}>
++          <span className={styles.brandMark}>{t('admin.brand.mark')}</span>
++          <span className={styles.brandSub}>{t('admin.brand.sub')}</span>
++        </div>
++        <Space size={12}>
++          <span className={styles.me}>{currentUser?.username ?? t('admin.topbar.defaultUser')}</span>
++          <Button size='small' onClick={() => window.location.assign('/')}>
++            {t('admin.topbar.backToApp')}
++          </Button>
++          <Button size='small' status='warning' onClick={() => void logout()}>
++            {t('admin.topbar.logout')}
++          </Button>
++        </Space>
++      </header>
++
++      {pageError && (
++        <Alert type='error' content={pageError} closable className={styles.alert} onClose={() => setPageError(null)} />
++      )}
++
++      <main className={styles.body}>
++        <Card
++          className={styles.users}
++          title={t('admin.users.title')}
++          bordered={false}
++          extra={
++            <Button size='mini' onClick={() => void loadUsers()}>
++              {t('admin.users.refresh')}
++            </Button>
++          }
++        >
++          <Table
++            rowKey='id'
++            size='small'
++            columns={userColumns}
++            data={users}
++            pagination={false}
++            rowSelection={{
++              type: 'radio',
++              selectedRowKeys: selectedUserId ? [selectedUserId] : [],
++              onChange: (keys) => setSelectedUserId(String(keys[0] ?? '') || null),
++            }}
++            onRow={(record) => ({
++              onClick: () => setSelectedUserId(record.id),
++            })}
++            noDataElement={t('admin.users.empty')}
++          />
++        </Card>
++
++        <Card
++          className={styles.providers}
++          title={
++            selectedUser
++              ? t('admin.providers.titleFor', { name: selectedUser.username || selectedUser.id })
++              : t('admin.providers.title')
++          }
++          bordered={false}
++          extra={
++            <Space size={8}>
++              <Button
++                size='mini'
++                disabled={!selectedUserId}
++                onClick={() => selectedUserId && setDraft({ mode: 'create', userId: selectedUserId })}
++              >
++                {t('admin.providers.create')}
++              </Button>
++              <Button size='mini' disabled={!selectedUserId} onClick={() => void refreshProviders()}>
++                {t('admin.providers.refresh')}
++              </Button>
++            </Space>
++          }
++        >
++          <Table
++            rowKey='id'
++            size='small'
++            columns={providerColumns}
++            data={providers}
++            loading={providersLoading}
++            pagination={false}
++            noDataElement={selectedUserId ? t('admin.providers.empty') : t('admin.providers.emptyNoUser')}
++          />
++        </Card>
++      </main>
++
++      <ProviderModal
++        draft={draft}
++        saving={saving}
++        ownerLabel={selectedUser?.username ?? ''}
++        onCancel={() => setDraft(null)}
++        onSubmit={saveProvider}
++      />
++    </div>
++  );
++}
++
++// ---------------------------------------------------------------------------
++// Create / edit dialog
++// ---------------------------------------------------------------------------
++
++function ProviderModal(props: {
++  draft: ProviderDraft;
++  saving: boolean;
++  ownerLabel: string;
++  onCancel: () => void;
++  onSubmit: (values: ProviderFormValues) => Promise<void>;
++}) {
++  const { t } = useTranslation();
++  const { draft, saving, ownerLabel, onCancel, onSubmit } = props;
++  const [form] = Form.useForm<ProviderFormValues>();
++
++  useEffect(() => {
++    if (draft) {
++      if (draft.mode === 'edit') {
++        form.setFieldsValue({
++          platform: draft.provider.platform,
++          name: draft.provider.name,
++          base_url: draft.provider.base_url,
++          api_key: draft.provider.api_key,
++          enabled: draft.provider.enabled,
++        });
++      } else {
++        form.resetFields();
++        form.setFieldsValue({ platform: 'openai', enabled: true });
++      }
++    }
++  }, [draft, form]);
++
++  if (!draft) return null;
++
++  return (
++    <Modal
++      visible
++      title={draft.mode === 'create' ? t('admin.modal.createTitle') : t('admin.modal.editTitle')}
++      okText={draft.mode === 'create' ? t('admin.modal.okCreate') : t('admin.modal.okSave')}
++      cancelText={t('admin.modal.cancel')}
++      confirmLoading={saving}
++      onCancel={onCancel}
++      onOk={() => {
++        void form.validate().then((values) => onSubmit(values));
++      }}
++      autoFocus={false}
++      focusLock
++    >
++      <Typography.Paragraph type='secondary' className={styles.modalHint}>
++        {t('admin.modal.owner', { name: ownerLabel || draft.userId })}
++      </Typography.Paragraph>
++      <Form form={form} layout='vertical'>
++        <Form.Item
++          label={t('admin.providers.platform')}
++          field='platform'
++          rules={[{ required: true, message: t('admin.modal.platformRequired') }]}
++        >
++          <Select options={PLATFORM_OPTIONS} allowCreate placeholder={t('admin.modal.platformPlaceholder')} />
++        </Form.Item>
++        <Form.Item
++          label={t('admin.providers.name')}
++          field='name'
++          rules={[{ required: true, message: t('admin.modal.nameRequired') }]}
++        >
++          <Input placeholder={t('admin.modal.namePlaceholder')} />
++        </Form.Item>
++        <Form.Item
++          label={t('admin.providers.baseUrl')}
++          field='base_url'
++          rules={[{ required: true, message: t('admin.modal.baseUrlRequired') }]}
++        >
++          <Input placeholder={t('admin.modal.baseUrlPlaceholder')} />
++        </Form.Item>
++        <Form.Item
++          label={t('admin.providers.apiKey')}
++          field='api_key'
++          rules={[{ required: true, message: t('admin.modal.apiKeyRequired') }]}
++          extra={t('admin.modal.apiKeyHint')}
++        >
++          <Input.Password placeholder={t('admin.modal.apiKeyPlaceholder')} />
++        </Form.Item>
++        <Form.Item label={t('admin.providers.enabled')} field='enabled' triggerPropName='checked'>
++          <Switch />
++        </Form.Item>
++      </Form>
++    </Modal>
++  );
++}
++
++// ---------------------------------------------------------------------------
++
++function Centered(props: { notice: string; action?: ReactNode }) {
++  const { t } = useTranslation();
++  return (
++    <div className={styles.centered}>
++      <Card bordered={false} className={styles.centeredCard}>
++        <Typography.Title heading={5}>
++          {t('admin.brand.mark')} · {t('admin.brand.sub')}
++        </Typography.Title>
++        <Typography.Paragraph type='secondary'>{props.notice}</Typography.Paragraph>
++        {props.action}
++      </Card>
++    </div>
++  );
++}
+diff --git a/packages/desktop/src/renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync.ts b/packages/desktop/src/renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync.ts
+index a530021..b22ac92 100644
+--- a/packages/desktop/src/renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync.ts
++++ b/packages/desktop/src/renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync.ts
+@@ -6,6 +6,7 @@
+ 
+ import { ipcBridge } from '@/common';
+ import type { TChatConversation } from '@/common/config/storage';
++import { useAuth } from '@/renderer/hooks/context/AuthContext';
+ import { addEventListener } from '@/renderer/utils/emitter';
+ import { useCallback, useEffect, useSyncExternalStore } from 'react';
+ 
+@@ -252,6 +253,10 @@ const persistManualUnread = () => {
+ const listeners = new Set<() => void>();
+ 
+ let isStoreInitialized = false;
++// Module-level (not a component ref): the sidebar unmounts during logout, so a
++// ref would forget the previous identity across the login-page gap and an
++// account switch could slip one stale render through.
++let lastObservedUserId: string | null | undefined;
+ let conversationsState: TChatConversation[] = [];
+ let generatingConversationIdsState = new Set<string>();
+ // Per-conversation set of pending confirmation ids (permission / acp_permission
+@@ -580,6 +585,30 @@ const setActiveConversationState = (conversation_id: string | null) => {
+   activeConversationIdState = conversation_id;
+ };
+ 
++/**
++ * Drop every piece of conversation-list state loaded for a previous identity.
++ * One account's sidebar titles must never render for the next one (the backend
++ * list is already user-scoped; this store is the renderer-side residue). WS
++ * listeners registered by init stay attached — they just refresh whatever
++ * identity is current. Does NOT touch `isStoreInitialized`: listeners are
++ * registered exactly once.
++ */
++export const resetConversationListStore = (): void => {
++  conversationsState = [];
++  generatingConversationIdsState = new Set<string>();
++  waitingConfirmationIdsByConversationState = new Map<string, Set<string>>();
++  waitingConfirmationConversationIdsState = new Set<string>();
++  completionUnreadConversationIdsState = new Set<string>();
++  completedConversationIdsState = new Set<string>();
++  conversation_idsState = new Set<string>();
++  projectIdByIdState = new Map<string, string | null>();
++  activeConversationIdState = null;
++  completedTurnIdByConversation.clear();
++  manualUnreadConversationIdsState = new Set<string>();
++  persistManualUnread();
++  emitStoreChange();
++};
++
+ const initializeConversationListSyncStore = () => {
+   if (isStoreInitialized) {
+     return;
+@@ -668,6 +697,27 @@ export const useConversationListSync = () => {
+     initializeConversationListSyncStore();
+   }, []);
+ 
++  // Identity switch (account login / session re-auth): wipe the previous
++  // account's rows before they can paint, then load the new account's list.
++  // The login page also resets synchronously so the very first paint after a
++  // switch is already empty; this effect is the safety net for any other entry
++  // path (QR login, session refresh, direct navigation).
++  const { user } = useAuth();
++  const userId = user?.id ?? null;
++  useEffect(() => {
++    if (lastObservedUserId === userId) return;
++    const isFirstObservation = lastObservedUserId === undefined;
++    lastObservedUserId = userId;
++    if (isFirstObservation) {
++      // Cold start: the init effect above owns the first load.
++      return;
++    }
++    resetConversationListStore();
++    if (userId) {
++      refreshConversations();
++    }
++  }, [userId]);
++
+   const {
+     conversations,
+     generatingConversationIds,
+diff --git a/packages/desktop/src/renderer/pages/login/index.tsx b/packages/desktop/src/renderer/pages/login/index.tsx
+index 827a717..624fcd2 100644
+--- a/packages/desktop/src/renderer/pages/login/index.tsx
++++ b/packages/desktop/src/renderer/pages/login/index.tsx
+@@ -5,6 +5,7 @@ import { changeLanguage } from '@/renderer/services/i18n';
+ import { useNavigate } from 'react-router-dom';
+ import AppLoader from '@renderer/components/layout/AppLoader';
+ import { useAuth } from '../../hooks/context/AuthContext';
++import { resetConversationListStore } from '@renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync';
+ import './LoginPage.css';
+ 
+ type MessageState = {
+@@ -159,6 +160,10 @@ const LoginPage: React.FC = () => {
+         const successText = t('login.success');
+         showMessage({ type: 'success', text: successText });
+ 
++        // Privacy: wipe the previous account's conversation rows from the
++        // renderer store before the sidebar can mount for this one.
++        resetConversationListStore();
++
+         window.setTimeout(() => {
+           void navigate('/guid', { replace: true });
+         }, 600);
 diff --git a/packages/desktop/src/renderer/services/FileService.ts b/packages/desktop/src/renderer/services/FileService.ts
 index 03b60fe..87cf9c0 100644
 --- a/packages/desktop/src/renderer/services/FileService.ts
@@ -233,6 +1149,1650 @@ index 3ab4842..45d7abb 100644
  
      xhr.addEventListener('load', () => {
        if (xhr.status < 200 || xhr.status >= 300) {
+diff --git a/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts b/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts
+index 677ae71..b55d74c 100644
+--- a/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts
++++ b/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts
+@@ -23,6 +23,66 @@ export type I18nKey =
+   | 'acp.status.error'
+   | 'acp.status.session_active'
+   | 'acp.status.unknown'
++  | 'admin.brand.mark'
++  | 'admin.brand.sub'
++  | 'admin.deleteDialog.content'
++  | 'admin.deleteDialog.ok'
++  | 'admin.deleteDialog.title'
++  | 'admin.gate.anonymous'
++  | 'admin.gate.anonymousAction'
++  | 'admin.gate.forbidden'
++  | 'admin.gate.forbiddenAction'
++  | 'admin.gate.loading'
++  | 'admin.message.created'
++  | 'admin.message.deleted'
++  | 'admin.message.updated'
++  | 'admin.modal.apiKeyHint'
++  | 'admin.modal.apiKeyPlaceholder'
++  | 'admin.modal.apiKeyRequired'
++  | 'admin.modal.baseUrlPlaceholder'
++  | 'admin.modal.baseUrlRequired'
++  | 'admin.modal.cancel'
++  | 'admin.modal.createTitle'
++  | 'admin.modal.editTitle'
++  | 'admin.modal.namePlaceholder'
++  | 'admin.modal.nameRequired'
++  | 'admin.modal.okCreate'
++  | 'admin.modal.okSave'
++  | 'admin.modal.owner'
++  | 'admin.modal.platformPlaceholder'
++  | 'admin.modal.platformRequired'
++  | 'admin.notice.deleteFailed'
++  | 'admin.notice.forbidden'
++  | 'admin.notice.providersLoad'
++  | 'admin.notice.saveFailed'
++  | 'admin.notice.usersLoad'
++  | 'admin.providers.apiKey'
++  | 'admin.providers.baseUrl'
++  | 'admin.providers.create'
++  | 'admin.providers.delete'
++  | 'admin.providers.edit'
++  | 'admin.providers.empty'
++  | 'admin.providers.emptyNoUser'
++  | 'admin.providers.enabled'
++  | 'admin.providers.name'
++  | 'admin.providers.no'
++  | 'admin.providers.platform'
++  | 'admin.providers.refresh'
++  | 'admin.providers.title'
++  | 'admin.providers.titleFor'
++  | 'admin.providers.yes'
++  | 'admin.topbar.backToApp'
++  | 'admin.topbar.defaultUser'
++  | 'admin.topbar.logout'
++  | 'admin.users.account'
++  | 'admin.users.active'
++  | 'admin.users.adminTag'
++  | 'admin.users.disabled'
++  | 'admin.users.empty'
++  | 'admin.users.lastLogin'
++  | 'admin.users.refresh'
++  | 'admin.users.status'
++  | 'admin.users.title'
+   | 'agent.config.busy'
+   | 'agent.config.commandAck'
+   | 'agent.config.failed'
+@@ -3054,4 +3114,5 @@ export type I18nModule =
+   | 'guid'
+   | 'agent'
+   | 'team'
+-  | 'pet';
++  | 'pet'
++  | 'admin';
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/de-DE/admin.json b/packages/desktop/src/renderer/services/i18n/locales/de-DE/admin.json
+new file mode 100644
+index 0000000..ddb62bd
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/de-DE/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "Admin-Konsole"
++  },
++  "topbar": {
++    "backToApp": "Zur App",
++    "logout": "Abmelden",
++    "defaultUser": "Administrator"
++  },
++  "gate": {
++    "loading": "Admin-Konsole wird geladen…",
++    "anonymous": "Zum Zugriff auf die Admin-Konsole anmelden.",
++    "anonymousAction": "Zur Anmeldung",
++    "forbidden": "Dieses Konto ist kein Administrator.",
++    "forbiddenAction": "Zur App"
++  },
++  "notice": {
++    "usersLoad": "Benutzerliste konnte nicht geladen werden. Bitte später erneut versuchen.",
++    "providersLoad": "Model-Anbieter konnten nicht geladen werden.",
++    "saveFailed": "Speichern fehlgeschlagen — Eingaben prüfen.",
++    "deleteFailed": "Löschen fehlgeschlagen.",
++    "forbidden": "Administratorzugriff erforderlich"
++  },
++  "users": {
++    "title": "Benutzer",
++    "refresh": "Aktualisieren",
++    "account": "Konto",
++    "status": "Status",
++    "lastLogin": "Zuletzt angemeldet",
++    "adminTag": "Administrator",
++    "active": "Aktiv",
++    "disabled": "Deaktiviert",
++    "empty": "Keine Benutzer"
++  },
++  "providers": {
++    "title": "Modell-Anbieter",
++    "titleFor": "Modell-Anbieter · {{name}}",
++    "create": "Neu",
++    "refresh": "Aktualisieren",
++    "empty": "Dieser Benutzer hat noch keine Modell-Anbieter",
++    "emptyNoUser": "Bitte links einen Benutzer auswählen",
++    "name": "Name",
++    "platform": "Plattform",
++    "baseUrl": "Base URL",
++    "apiKey": "API-Schlüssel",
++    "enabled": "Aktiv",
++    "yes": "Ja",
++    "no": "Nein",
++    "edit": "Bearbeiten",
++    "delete": "Löschen"
++  },
++  "modal": {
++    "createTitle": "Neuer Modell-Anbieter",
++    "editTitle": "Modell-Anbieter bearbeiten",
++    "okCreate": "Erstellen",
++    "okSave": "Speichern",
++    "cancel": "Abbrechen",
++    "owner": "Besitzer: {{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "Plattform auswählen",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "Namen eingeben",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Base URL eingeben",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "API-Schlüssel eingeben",
++    "apiKeyHint": "Nur Administratoren können ihn lesen; alle anderen sehen eine Maske."
++  },
++  "deleteDialog": {
++    "title": "Modell-Anbieter löschen",
++    "content": "„{{name}}“ löschen? Die Konfiguration dieses Benutzers wird sofort deaktiviert.",
++    "ok": "Löschen"
++  },
++  "message": {
++    "created": "Modell-Anbieter erstellt",
++    "updated": "Modell-Anbieter aktualisiert",
++    "deleted": "Gelöscht"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/de-DE/index.ts b/packages/desktop/src/renderer/services/i18n/locales/de-DE/index.ts
+index ee5c97e..7c75a4b 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/de-DE/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/de-DE/index.ts
+@@ -22,6 +22,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -43,4 +44,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/en-US/admin.json b/packages/desktop/src/renderer/services/i18n/locales/en-US/admin.json
+new file mode 100644
+index 0000000..58a21a6
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/en-US/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "Admin Console"
++  },
++  "topbar": {
++    "backToApp": "Back to App",
++    "logout": "Sign Out",
++    "defaultUser": "Administrator"
++  },
++  "gate": {
++    "loading": "Loading the admin console…",
++    "anonymous": "Sign in to access the admin console.",
++    "anonymousAction": "Go to Sign In",
++    "forbidden": "This account is not an administrator.",
++    "forbiddenAction": "Back to App"
++  },
++  "notice": {
++    "usersLoad": "Couldn't load the user list. Try again shortly.",
++    "providersLoad": "Couldn't load model providers.",
++    "saveFailed": "Save failed — check the fields.",
++    "deleteFailed": "Delete failed.",
++    "forbidden": "Administrator access required"
++  },
++  "users": {
++    "title": "Users",
++    "refresh": "Refresh",
++    "account": "Account",
++    "status": "Status",
++    "lastLogin": "Last login",
++    "adminTag": "Admin",
++    "active": "Active",
++    "disabled": "Disabled",
++    "empty": "No users"
++  },
++  "providers": {
++    "title": "Model Providers",
++    "titleFor": "Model Providers · {{name}}",
++    "create": "New",
++    "refresh": "Refresh",
++    "empty": "This user has no model providers yet",
++    "emptyNoUser": "Select a user on the left first",
++    "name": "Name",
++    "platform": "Platform",
++    "baseUrl": "Base URL",
++    "apiKey": "API Key",
++    "enabled": "Enabled",
++    "yes": "Yes",
++    "no": "No",
++    "edit": "Edit",
++    "delete": "Delete"
++  },
++  "modal": {
++    "createTitle": "New Model Provider",
++    "editTitle": "Edit Model Provider",
++    "okCreate": "Create",
++    "okSave": "Save",
++    "cancel": "Cancel",
++    "owner": "Owner: {{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "Select a platform",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "Enter a name",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Enter a base URL",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "Enter an API key",
++    "apiKeyHint": "Only administrators can read it; everyone else sees a mask."
++  },
++  "deleteDialog": {
++    "title": "Delete Model Provider",
++    "content": "Delete \"{{name}}\"? It stops working for this user immediately.",
++    "ok": "Delete"
++  },
++  "message": {
++    "created": "Model provider created",
++    "updated": "Model provider updated",
++    "deleted": "Deleted"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/en-US/index.ts b/packages/desktop/src/renderer/services/i18n/locales/en-US/index.ts
+index 9bd9747..6a12e45 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/en-US/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/en-US/index.ts
+@@ -22,6 +22,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -43,4 +44,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/es-ES/admin.json b/packages/desktop/src/renderer/services/i18n/locales/es-ES/admin.json
+new file mode 100644
+index 0000000..e14b66b
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/es-ES/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "Consola de administración"
++  },
++  "topbar": {
++    "backToApp": "Volver a la aplicación",
++    "logout": "Cerrar sesión",
++    "defaultUser": "Administrador"
++  },
++  "gate": {
++    "loading": "Cargando la consola de administración…",
++    "anonymous": "Inicia sesión para acceder a la consola de administración.",
++    "anonymousAction": "Ir a iniciar sesión",
++    "forbidden": "Esta cuenta no es de administrador.",
++    "forbiddenAction": "Volver a la aplicación"
++  },
++  "notice": {
++    "usersLoad": "No se pudo cargar la lista de usuarios. Inténtalo de nuevo en un momento.",
++    "providersLoad": "No se pudieron cargar los proveedores de modelos.",
++    "saveFailed": "Error al guardar — revisa los campos.",
++    "deleteFailed": "Error al eliminar.",
++    "forbidden": "Se requiere acceso de administrador"
++  },
++  "users": {
++    "title": "Usuarios",
++    "refresh": "Actualizar",
++    "account": "Cuenta",
++    "status": "Estado",
++    "lastLogin": "Último inicio de sesión",
++    "adminTag": "Administrador",
++    "active": "Activo",
++    "disabled": "Inactivo",
++    "empty": "No hay usuarios"
++  },
++  "providers": {
++    "title": "Proveedores de modelos",
++    "titleFor": "Proveedores de modelos · {{name}}",
++    "create": "Nuevo",
++    "refresh": "Actualizar",
++    "empty": "Este usuario aún no tiene proveedores de modelos",
++    "emptyNoUser": "Selecciona un usuario a la izquierda",
++    "name": "Nombre",
++    "platform": "Plataforma",
++    "baseUrl": "Base URL",
++    "apiKey": "Clave API",
++    "enabled": "Habilitado",
++    "yes": "Sí",
++    "no": "No",
++    "edit": "Editar",
++    "delete": "Eliminar"
++  },
++  "modal": {
++    "createTitle": "Nuevo proveedor de modelos",
++    "editTitle": "Editar proveedor de modelos",
++    "okCreate": "Crear",
++    "okSave": "Guardar",
++    "cancel": "Cancelar",
++    "owner": "Propietario: {{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "Selecciona una plataforma",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "Introduce un nombre",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Introduce una Base URL",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "Introduce una clave API",
++    "apiKeyHint": "Solo los administradores pueden leerla; el resto ve una máscara."
++  },
++  "deleteDialog": {
++    "title": "Eliminar proveedor de modelos",
++    "content": "¿Eliminar «{{name}}»? La configuración dejará de funcionar para este usuario.",
++    "ok": "Eliminar"
++  },
++  "message": {
++    "created": "Proveedor de modelos creado",
++    "updated": "Proveedor de modelos actualizado",
++    "deleted": "Eliminado"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/es-ES/index.ts b/packages/desktop/src/renderer/services/i18n/locales/es-ES/index.ts
+index 27d5c16..3457557 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/es-ES/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/es-ES/index.ts
+@@ -22,6 +22,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -43,4 +44,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/admin.json b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/admin.json
+new file mode 100644
+index 0000000..f8cd0c6
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "کنسول مدیریت"
++  },
++  "topbar": {
++    "backToApp": "بازگشت به برنامه",
++    "logout": "خروج از حساب",
++    "defaultUser": "مدیر"
++  },
++  "gate": {
++    "loading": "در حال بارگذاری کنسول مدیریت…",
++    "anonymous": "برای دسترسی به کنسول مدیریت وارد شوید.",
++    "anonymousAction": "رفتن به ورود",
++    "forbidden": "این حساب مدیر نیست.",
++    "forbiddenAction": "بازگشت به برنامه"
++  },
++  "notice": {
++    "usersLoad": "بارگذاری فهرست کاربران ناموفق بود. کمی بعد دوباره تلاش کنید.",
++    "providersLoad": "بارگذاری ارائه‌دهندگان مدل ناموفق بود.",
++    "saveFailed": "ذخیره ناموفق بود — فیلدها را بررسی کنید.",
++    "deleteFailed": "حذف ناموفق بود.",
++    "forbidden": "دسترسی مدیر لازم است"
++  },
++  "users": {
++    "title": "کاربران",
++    "refresh": "به‌روزرسانی",
++    "account": "حساب",
++    "status": "وضعیت",
++    "lastLogin": "آخرین ورود",
++    "adminTag": "مدیر",
++    "active": "فعال",
++    "disabled": "غیرفعال",
++    "empty": "بدون کاربر"
++  },
++  "providers": {
++    "title": "ارائه‌دهندگان مدل",
++    "titleFor": "ارائه‌دهندگان مدل · {{name}}",
++    "create": "جدید",
++    "refresh": "به‌روزرسانی",
++    "empty": "این کاربر هنوز ارائه‌دهنده مدلی ندارد",
++    "emptyNoUser": "ابتدا از سمت چپ یک کاربر انتخاب کنید",
++    "name": "نام",
++    "platform": "پلتفرم",
++    "baseUrl": "Base URL",
++    "apiKey": "کلید API",
++    "enabled": "فعال",
++    "yes": "بله",
++    "no": "خیر",
++    "edit": "ویرایش",
++    "delete": "حذف"
++  },
++  "modal": {
++    "createTitle": "ارائه‌دهنده مدل جدید",
++    "editTitle": "ویرایش ارائه‌دهنده مدل",
++    "okCreate": "ایجاد",
++    "okSave": "ذخیره",
++    "cancel": "انصراف",
++    "owner": "مالک: {{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "یک پلتفرم انتخاب کنید",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "نام را وارد کنید",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Base URL را وارد کنید",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "کلید API را وارد کنید",
++    "apiKeyHint": "فقط مدیران می‌توانند آن را بخوانند؛ دیگران ماسک می‌بینند."
++  },
++  "deleteDialog": {
++    "title": "حذف ارائه‌دهنده مدل",
++    "content": "«{{name}}» حذف شود؟ این پیکربندی بلافاصله برای این کاربر از کار می‌افتد.",
++    "ok": "حذف"
++  },
++  "message": {
++    "created": "ارائه‌دهنده مدل ایجاد شد",
++    "updated": "ارائه‌دهنده مدل به‌روزرسانی شد",
++    "deleted": "حذف شد"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/index.ts
+index 68d075d..29bd748 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/index.ts
+@@ -22,6 +22,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -43,4 +44,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/admin.json b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/admin.json
+new file mode 100644
+index 0000000..881fe72
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "Console d'administration"
++  },
++  "topbar": {
++    "backToApp": "Retour à l'application",
++    "logout": "Se déconnecter",
++    "defaultUser": "Administrateur"
++  },
++  "gate": {
++    "loading": "Chargement de la console d'administration…",
++    "anonymous": "Connectez-vous pour accéder à la console d'administration.",
++    "anonymousAction": "Aller à la connexion",
++    "forbidden": "Ce compte n'est pas administrateur.",
++    "forbiddenAction": "Retour à l'application"
++  },
++  "notice": {
++    "usersLoad": "Impossible de charger la liste des utilisateurs. Réessayez dans un instant.",
++    "providersLoad": "Impossible de charger les fournisseurs de modèles.",
++    "saveFailed": "Échec de l'enregistrement — vérifiez les champs.",
++    "deleteFailed": "Échec de la suppression.",
++    "forbidden": "Accès administrateur requis"
++  },
++  "users": {
++    "title": "Utilisateurs",
++    "refresh": "Actualiser",
++    "account": "Compte",
++    "status": "Statut",
++    "lastLogin": "Dernière connexion",
++    "adminTag": "Administrateur",
++    "active": "Actif",
++    "disabled": "Désactivé",
++    "empty": "Aucun utilisateur"
++  },
++  "providers": {
++    "title": "Fournisseurs de modèles",
++    "titleFor": "Fournisseurs de modèles · {{name}}",
++    "create": "Nouveau",
++    "refresh": "Actualiser",
++    "empty": "Cet utilisateur n'a pas encore de fournisseur de modèles",
++    "emptyNoUser": "Sélectionnez d'abord un utilisateur à gauche",
++    "name": "Nom",
++    "platform": "Plateforme",
++    "baseUrl": "Base URL",
++    "apiKey": "Clé API",
++    "enabled": "Activé",
++    "yes": "Oui",
++    "no": "Non",
++    "edit": "Modifier",
++    "delete": "Supprimer"
++  },
++  "modal": {
++    "createTitle": "Nouveau fournisseur de modèles",
++    "editTitle": "Modifier le fournisseur de modèles",
++    "okCreate": "Créer",
++    "okSave": "Enregistrer",
++    "cancel": "Annuler",
++    "owner": "Propriétaire : {{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "Sélectionnez une plateforme",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "Saisissez un nom",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Saisissez une Base URL",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "Saisissez une clé API",
++    "apiKeyHint": "Seuls les administrateurs peuvent la lire ; les autres voient un masque."
++  },
++  "deleteDialog": {
++    "title": "Supprimer le fournisseur de modèles",
++    "content": "Supprimer « {{name}} » ? La configuration cesserait immédiatement de fonctionner pour cet utilisateur.",
++    "ok": "Supprimer"
++  },
++  "message": {
++    "created": "Fournisseur de modèles créé",
++    "updated": "Fournisseur de modèles mis à jour",
++    "deleted": "Supprimé"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/index.ts
+index 76e364a..1535379 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/index.ts
+@@ -22,6 +22,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -43,4 +44,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/admin.json b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/admin.json
+new file mode 100644
+index 0000000..06592b7
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "管理コンソール"
++  },
++  "topbar": {
++    "backToApp": "アプリに戻る",
++    "logout": "ログアウト",
++    "defaultUser": "管理者"
++  },
++  "gate": {
++    "loading": "管理コンソールを読み込んでいます…",
++    "anonymous": "管理コンソールにアクセスするにはサインインしてください。",
++    "anonymousAction": "サインインへ",
++    "forbidden": "このアカウントは管理者ではありません。",
++    "forbiddenAction": "アプリに戻る"
++  },
++  "notice": {
++    "usersLoad": "ユーザー一覧の取得に失敗しました。しばらくしてから再試行してください。",
++    "providersLoad": "モデルプロバイダーの取得に失敗しました。",
++    "saveFailed": "保存に失敗しました — 入力内容を確認してください。",
++    "deleteFailed": "削除に失敗しました。",
++    "forbidden": "管理者権限が必要です"
++  },
++  "users": {
++    "title": "ユーザー",
++    "refresh": "更新",
++    "account": "アカウント",
++    "status": "状態",
++    "lastLogin": "最終ログイン",
++    "adminTag": "管理者",
++    "active": "有効",
++    "disabled": "無効",
++    "empty": "ユーザーがありません"
++  },
++  "providers": {
++    "title": "モデルプロバイダー",
++    "titleFor": "モデルプロバイダー · {{name}}",
++    "create": "新規",
++    "refresh": "更新",
++    "empty": "このユーザーにはまだモデルプロバイダーがありません",
++    "emptyNoUser": "まず左の一覧からユーザーを選択してください",
++    "name": "名前",
++    "platform": "プラットフォーム",
++    "baseUrl": "Base URL",
++    "apiKey": "APIキー",
++    "enabled": "有効",
++    "yes": "はい",
++    "no": "いいえ",
++    "edit": "編集",
++    "delete": "削除"
++  },
++  "modal": {
++    "createTitle": "モデルプロバイダーを新規作成",
++    "editTitle": "モデルプロバイダーを編集",
++    "okCreate": "作成",
++    "okSave": "保存",
++    "cancel": "キャンセル",
++    "owner": "所有者：{{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "プラットフォームを選択してください",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "名前を入力してください",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Base URL を入力してください",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "APIキーを入力してください",
++    "apiKeyHint": "読み取れるのは管理者のみです。他ユーザーにはマスクが表示されます。"
++  },
++  "deleteDialog": {
++    "title": "モデルプロバイダーを削除",
++    "content": "「{{name}}」を削除しますか？このユーザーの設定は即時に無効になります。",
++    "ok": "削除"
++  },
++  "message": {
++    "created": "モデルプロバイダーを作成しました",
++    "updated": "モデルプロバイダーを更新しました",
++    "deleted": "削除しました"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/index.ts b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/index.ts
+index 0654712..ce3be9e 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/index.ts
+@@ -18,6 +18,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -39,4 +40,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/admin.json b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/admin.json
+new file mode 100644
+index 0000000..a877480
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "관리 콘솔"
++  },
++  "topbar": {
++    "backToApp": "앱으로 돌아가기",
++    "logout": "로그아웃",
++    "defaultUser": "관리자"
++  },
++  "gate": {
++    "loading": "관리 콘솔을 불러오는 중…",
++    "anonymous": "관리 콘솔에 접근하려면 로그인하세요.",
++    "anonymousAction": "로그인으로 이동",
++    "forbidden": "이 계정은 관리자가 아닙니다.",
++    "forbiddenAction": "앱으로 돌아가기"
++  },
++  "notice": {
++    "usersLoad": "사용자 목록을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
++    "providersLoad": "모델 프로바이더를 불러오지 못했습니다.",
++    "saveFailed": "저장에 실패했습니다 — 입력 내용을 확인하세요.",
++    "deleteFailed": "삭제에 실패했습니다.",
++    "forbidden": "관리자 권한이 필요합니다"
++  },
++  "users": {
++    "title": "사용자",
++    "refresh": "새로고침",
++    "account": "계정",
++    "status": "상태",
++    "lastLogin": "최근 로그인",
++    "adminTag": "관리자",
++    "active": "활성",
++    "disabled": "비활성",
++    "empty": "사용자가 없습니다"
++  },
++  "providers": {
++    "title": "모델 프로바이더",
++    "titleFor": "모델 프로바이더 · {{name}}",
++    "create": "새로 만들기",
++    "refresh": "새로고침",
++    "empty": "이 사용자에게는 아직 모델 프로바이더가 없습니다",
++    "emptyNoUser": "왼쪽에서 사용자를 선택하세요",
++    "name": "이름",
++    "platform": "플랫폼",
++    "baseUrl": "Base URL",
++    "apiKey": "API 키",
++    "enabled": "사용",
++    "yes": "예",
++    "no": "아니오",
++    "edit": "편집",
++    "delete": "삭제"
++  },
++  "modal": {
++    "createTitle": "모델 프로바이더 새로 만들기",
++    "editTitle": "모델 프로바이더 편집",
++    "okCreate": "만들기",
++    "okSave": "저장",
++    "cancel": "취소",
++    "owner": "소유자: {{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "플랫폼을 선택하세요",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "이름을 입력하세요",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Base URL을 입력하세요",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "API 키를 입력하세요",
++    "apiKeyHint": "관리자만 읽을 수 있으며 다른 사용자에게는 마스크가 표시됩니다."
++  },
++  "deleteDialog": {
++    "title": "모델 프로바이더 삭제",
++    "content": "\"{{name}}\"을(를) 삭제할까요? 이 사용자의 설정이 즉시 중단됩니다.",
++    "ok": "삭제"
++  },
++  "message": {
++    "created": "모델 프로바이더를 만들었습니다",
++    "updated": "모델 프로바이더를 업데이트했습니다",
++    "deleted": "삭제했습니다"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/index.ts
+index 0654712..ce3be9e 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/index.ts
+@@ -18,6 +18,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -39,4 +40,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/admin.json b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/admin.json
+new file mode 100644
+index 0000000..abdb489
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "Console de administração"
++  },
++  "topbar": {
++    "backToApp": "Voltar ao aplicativo",
++    "logout": "Sair",
++    "defaultUser": "Administrador"
++  },
++  "gate": {
++    "loading": "Carregando o console de administração…",
++    "anonymous": "Faça login para acessar o console de administração.",
++    "anonymousAction": "Ir para o login",
++    "forbidden": "Esta conta não é de administrador.",
++    "forbiddenAction": "Voltar ao aplicativo"
++  },
++  "notice": {
++    "usersLoad": "Não foi possível carregar a lista de usuários. Tente novamente em instantes.",
++    "providersLoad": "Não foi possível carregar os provedores de modelos.",
++    "saveFailed": "Falha ao salvar — verifique os campos.",
++    "deleteFailed": "Falha ao excluir.",
++    "forbidden": "Acesso de administrador necessário"
++  },
++  "users": {
++    "title": "Usuários",
++    "refresh": "Atualizar",
++    "account": "Conta",
++    "status": "Status",
++    "lastLogin": "Último acesso",
++    "adminTag": "Administrador",
++    "active": "Ativo",
++    "disabled": "Inativo",
++    "empty": "Nenhum usuário"
++  },
++  "providers": {
++    "title": "Provedores de modelos",
++    "titleFor": "Provedores de modelos · {{name}}",
++    "create": "Novo",
++    "refresh": "Atualizar",
++    "empty": "Este usuário ainda não tem provedores de modelos",
++    "emptyNoUser": "Selecione um usuário à esquerda",
++    "name": "Nome",
++    "platform": "Plataforma",
++    "baseUrl": "Base URL",
++    "apiKey": "Chave de API",
++    "enabled": "Habilitado",
++    "yes": "Sim",
++    "no": "Não",
++    "edit": "Editar",
++    "delete": "Excluir"
++  },
++  "modal": {
++    "createTitle": "Novo provedor de modelos",
++    "editTitle": "Editar provedor de modelos",
++    "okCreate": "Criar",
++    "okSave": "Salvar",
++    "cancel": "Cancelar",
++    "owner": "Proprietário: {{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "Selecione uma plataforma",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "Digite um nome",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Digite uma Base URL",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "Digite uma chave de API",
++    "apiKeyHint": "Somente administradores podem ler; os demais veem uma máscara."
++  },
++  "deleteDialog": {
++    "title": "Excluir provedor de modelos",
++    "content": "Excluir \"{{name}}\"? Essa configuração deixará de funcionar para este usuário.",
++    "ok": "Excluir"
++  },
++  "message": {
++    "created": "Provedor de modelos criado",
++    "updated": "Provedor de modelos atualizado",
++    "deleted": "Excluído"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/index.ts
+index bc16b1f..ba384c2 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/index.ts
+@@ -22,6 +22,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -43,4 +44,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/admin.json b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/admin.json
+new file mode 100644
+index 0000000..4a21145
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "Панель администратора"
++  },
++  "topbar": {
++    "backToApp": "Вернуться в приложение",
++    "logout": "Выйти",
++    "defaultUser": "Администратор"
++  },
++  "gate": {
++    "loading": "Загрузка панели администратора…",
++    "anonymous": "Войдите, чтобы открыть панель администратора.",
++    "anonymousAction": "Перейти ко входу",
++    "forbidden": "У этой учётной записи нет прав администратора.",
++    "forbiddenAction": "Вернуться в приложение"
++  },
++  "notice": {
++    "usersLoad": "Не удалось загрузить список пользователей. Повторите попытку позже.",
++    "providersLoad": "Не удалось загрузить модели-провайдеры.",
++    "saveFailed": "Не удалось сохранить — проверьте поля.",
++    "deleteFailed": "Не удалось удалить.",
++    "forbidden": "Требуются права администратора"
++  },
++  "users": {
++    "title": "Пользователи",
++    "refresh": "Обновить",
++    "account": "Аккаунт",
++    "status": "Статус",
++    "lastLogin": "Последний вход",
++    "adminTag": "Администратор",
++    "active": "Активен",
++    "disabled": "Отключён",
++    "empty": "Пользователей нет"
++  },
++  "providers": {
++    "title": "Модели-провайдеры",
++    "titleFor": "Модели-провайдеры · {{name}}",
++    "create": "Создать",
++    "refresh": "Обновить",
++    "empty": "У этого пользователя пока нет моделей-провайдеров",
++    "emptyNoUser": "Сначала выберите пользователя слева",
++    "name": "Название",
++    "platform": "Платформа",
++    "baseUrl": "Base URL",
++    "apiKey": "API-ключ",
++    "enabled": "Включено",
++    "yes": "Да",
++    "no": "Нет",
++    "edit": "Изменить",
++    "delete": "Удалить"
++  },
++  "modal": {
++    "createTitle": "Новый модели-провайдер",
++    "editTitle": "Изменение модели-провайдера",
++    "okCreate": "Создать",
++    "okSave": "Сохранить",
++    "cancel": "Отмена",
++    "owner": "Владелец: {{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "Выберите платформу",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "Введите название",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Введите Base URL",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "Введите API-ключ",
++    "apiKeyHint": "Читать его может только администратор; остальные видят маску."
++  },
++  "deleteDialog": {
++    "title": "Удалить модели-провайдера",
++    "content": "Удалить «{{name}}»? Настройка сразу перестанет работать у этого пользователя.",
++    "ok": "Удалить"
++  },
++  "message": {
++    "created": "Модели-провайдер создан",
++    "updated": "Модели-провайдер обновлён",
++    "deleted": "Удалено"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/index.ts b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/index.ts
+index 0571d44..a7df18e 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/index.ts
+@@ -22,6 +22,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -43,4 +44,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/admin.json b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/admin.json
+new file mode 100644
+index 0000000..79f882d
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "Yönetim Konsolu"
++  },
++  "topbar": {
++    "backToApp": "Uygulamaya Dön",
++    "logout": "Çıkış Yap",
++    "defaultUser": "Yönetici"
++  },
++  "gate": {
++    "loading": "Yönetim konsolu yükleniyor…",
++    "anonymous": "Yönetim konsoluna erişmek için oturum açın.",
++    "anonymousAction": "Oturum Aç'a Git",
++    "forbidden": "Bu hesap yönetici değil.",
++    "forbiddenAction": "Uygulamaya Dön"
++  },
++  "notice": {
++    "usersLoad": "Kullanıcı listesi yüklenemedi. Biraz sonra tekrar deneyin.",
++    "providersLoad": "Model sağlayıcıları yüklenemedi.",
++    "saveFailed": "Kaydedilemedi — alanları kontrol edin.",
++    "deleteFailed": "Silinemedi.",
++    "forbidden": "Yönetici erişimi gerekli"
++  },
++  "users": {
++    "title": "Kullanıcılar",
++    "refresh": "Yenile",
++    "account": "Hesap",
++    "status": "Durum",
++    "lastLogin": "Son oturum",
++    "adminTag": "Yönetici",
++    "active": "Etkin",
++    "disabled": "Devre dışı",
++    "empty": "Kullanıcı yok"
++  },
++  "providers": {
++    "title": "Model sağlayıcıları",
++    "titleFor": "Model sağlayıcıları · {{name}}",
++    "create": "Yeni",
++    "refresh": "Yenile",
++    "empty": "Bu kullanıcıda henüz model sağlayıcı yok",
++    "emptyNoUser": "Önce soldan bir kullanıcı seçin",
++    "name": "Ad",
++    "platform": "Platform",
++    "baseUrl": "Base URL",
++    "apiKey": "API Anahtarı",
++    "enabled": "Etkin",
++    "yes": "Evet",
++    "no": "Hayır",
++    "edit": "Düzenle",
++    "delete": "Sil"
++  },
++  "modal": {
++    "createTitle": "Yeni Model Sağlayıcısı",
++    "editTitle": "Model Sağlayıcısını Düzenle",
++    "okCreate": "Oluştur",
++    "okSave": "Kaydet",
++    "cancel": "İptal",
++    "owner": "Sahibi: {{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "Platform seçin",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "Bir ad girin",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Base URL girin",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "API anahtarı girin",
++    "apiKeyHint": "Yalnızca yöneticiler okuyabilir; diğer kullanıcılar maske görür."
++  },
++  "deleteDialog": {
++    "title": "Model Sağlayıcısını Sil",
++    "content": "\"{{name}}\" silinsin mi? Bu kullanıcının yapılandırması hemen devre dışı kalır.",
++    "ok": "Sil"
++  },
++  "message": {
++    "created": "Model sağlayıcısı oluşturuldu",
++    "updated": "Model sağlayıcısı güncellendi",
++    "deleted": "Silindi"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/index.ts
+index 0654712..ce3be9e 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/index.ts
+@@ -18,6 +18,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -39,4 +40,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/admin.json b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/admin.json
+new file mode 100644
+index 0000000..a888508
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "Панель адміністратора"
++  },
++  "topbar": {
++    "backToApp": "Повернутися до застосунку",
++    "logout": "Вийти",
++    "defaultUser": "Адміністратор"
++  },
++  "gate": {
++    "loading": "Завантаження панелі адміністратора…",
++    "anonymous": "Увійдіть, щоб відкрити панель адміністратора.",
++    "anonymousAction": "Перейти до входу",
++    "forbidden": "В облікового запису немає прав адміністратора.",
++    "forbiddenAction": "Повернутися до застосунку"
++  },
++  "notice": {
++    "usersLoad": "Не вдалося завантажити список користувачів. Спробуйте пізніше.",
++    "providersLoad": "Не вдалося завантажити модель-провайдерів.",
++    "saveFailed": "Не вдалося зберегти — перевірте поля.",
++    "deleteFailed": "Не вдалося видалити.",
++    "forbidden": "Потрібні права адміністратора"
++  },
++  "users": {
++    "title": "Користувачі",
++    "refresh": "Оновити",
++    "account": "Обліковий запис",
++    "status": "Статус",
++    "lastLogin": "Останній вхід",
++    "adminTag": "Адміністратор",
++    "active": "Активний",
++    "disabled": "Вимкнено",
++    "empty": "Користувачів немає"
++  },
++  "providers": {
++    "title": "Модель-провайдери",
++    "titleFor": "Модель-провайдери · {{name}}",
++    "create": "Створити",
++    "refresh": "Оновити",
++    "empty": "У цього користувача ще немає модель-провайдерів",
++    "emptyNoUser": "Спочатку виберіть користувача ліворуч",
++    "name": "Назва",
++    "platform": "Платформа",
++    "baseUrl": "Base URL",
++    "apiKey": "API-ключ",
++    "enabled": "Увімкнено",
++    "yes": "Так",
++    "no": "Ні",
++    "edit": "Редагувати",
++    "delete": "Видалити"
++  },
++  "modal": {
++    "createTitle": "Новий модель-провайдер",
++    "editTitle": "Редагування модель-провайдера",
++    "okCreate": "Створити",
++    "okSave": "Зберегти",
++    "cancel": "Скасувати",
++    "owner": "Власник: {{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "Виберіть платформу",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "Введіть назву",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "Введіть Base URL",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "Введіть API-ключ",
++    "apiKeyHint": "Читати його може лише адміністратор; інші бачать маску."
++  },
++  "deleteDialog": {
++    "title": "Видалити модель-провайдера",
++    "content": "Видалити «{{name}}»? Налаштування одразу перестане працювати в цього користувача.",
++    "ok": "Видалити"
++  },
++  "message": {
++    "created": "Модель-провайдер створено",
++    "updated": "Модель-провайдер оновлено",
++    "deleted": "Видалено"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/index.ts b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/index.ts
+index 68886da..5450f2d 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/index.ts
+@@ -22,6 +22,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -43,4 +44,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/admin.json b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/admin.json
+new file mode 100644
+index 0000000..d660ac5
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "管理控制台"
++  },
++  "topbar": {
++    "backToApp": "返回应用",
++    "logout": "退出登录",
++    "defaultUser": "管理员"
++  },
++  "gate": {
++    "loading": "正在加载管理控制台…",
++    "anonymous": "需要先登录才能访问管理控制台。",
++    "anonymousAction": "前往登录",
++    "forbidden": "当前账号不是管理员。",
++    "forbiddenAction": "返回应用"
++  },
++  "notice": {
++    "usersLoad": "加载用户列表失败，请稍后重试。",
++    "providersLoad": "加载模型服务失败。",
++    "saveFailed": "保存失败，请检查填写内容。",
++    "deleteFailed": "删除失败。",
++    "forbidden": "需要管理员权限"
++  },
++  "users": {
++    "title": "用户",
++    "refresh": "刷新",
++    "account": "账号",
++    "status": "状态",
++    "lastLogin": "最近登录",
++    "adminTag": "管理员",
++    "active": "启用",
++    "disabled": "停用",
++    "empty": "暂无用户"
++  },
++  "providers": {
++    "title": "模型服务",
++    "titleFor": "模型服务 · {{name}}",
++    "create": "新建",
++    "refresh": "刷新",
++    "empty": "该用户还没有配置模型服务",
++    "emptyNoUser": "请先在左侧选择用户",
++    "name": "名称",
++    "platform": "平台",
++    "baseUrl": "Base URL",
++    "apiKey": "API Key",
++    "enabled": "启用",
++    "yes": "是",
++    "no": "否",
++    "edit": "编辑",
++    "delete": "删除"
++  },
++  "modal": {
++    "createTitle": "新建模型服务",
++    "editTitle": "编辑模型服务",
++    "okCreate": "创建",
++    "okSave": "保存",
++    "cancel": "取消",
++    "owner": "服务归属：{{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "请选择平台",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "请输入名称",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "请输入 Base URL",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "请输入 API Key",
++    "apiKeyHint": "仅管理员可读；其他用户只会看到掩码。"
++  },
++  "deleteDialog": {
++    "title": "删除模型服务",
++    "content": "确定删除「{{name}}」吗？该用户的此配置将立即失效。",
++    "ok": "删除"
++  },
++  "message": {
++    "created": "已为该用户创建模型服务",
++    "updated": "模型服务已更新",
++    "deleted": "已删除"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/index.ts b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/index.ts
+index 15e9035..9993a4b 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/index.ts
+@@ -22,6 +22,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -43,4 +44,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/admin.json b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/admin.json
+new file mode 100644
+index 0000000..dc75775
+--- /dev/null
++++ b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/admin.json
+@@ -0,0 +1,80 @@
++{
++  "brand": {
++    "mark": "AionUi",
++    "sub": "管理主控台"
++  },
++  "topbar": {
++    "backToApp": "返回應用",
++    "logout": "登出",
++    "defaultUser": "管理員"
++  },
++  "gate": {
++    "loading": "正在載入管理主控台…",
++    "anonymous": "需要先登入才能存取管理主控台。",
++    "anonymousAction": "前往登入",
++    "forbidden": "目前帳號不是管理員。",
++    "forbiddenAction": "返回應用"
++  },
++  "notice": {
++    "usersLoad": "載入使用者清單失敗，請稍後再試。",
++    "providersLoad": "載入模型服務失敗。",
++    "saveFailed": "儲存失敗，請檢查填寫內容。",
++    "deleteFailed": "刪除失敗。",
++    "forbidden": "需要管理員權限"
++  },
++  "users": {
++    "title": "使用者",
++    "refresh": "重新整理",
++    "account": "帳號",
++    "status": "狀態",
++    "lastLogin": "最近登入",
++    "adminTag": "管理員",
++    "active": "啟用",
++    "disabled": "停用",
++    "empty": "暫無使用者"
++  },
++  "providers": {
++    "title": "模型服務",
++    "titleFor": "模型服務 · {{name}}",
++    "create": "新增",
++    "refresh": "重新整理",
++    "empty": "該使用者尚未設定模型服務",
++    "emptyNoUser": "請先在左側選擇使用者",
++    "name": "名稱",
++    "platform": "平台",
++    "baseUrl": "Base URL",
++    "apiKey": "API Key",
++    "enabled": "啟用",
++    "yes": "是",
++    "no": "否",
++    "edit": "編輯",
++    "delete": "刪除"
++  },
++  "modal": {
++    "createTitle": "新建模型服務",
++    "editTitle": "編輯模型服務",
++    "okCreate": "建立",
++    "okSave": "儲存",
++    "cancel": "取消",
++    "owner": "服務歸屬：{{name}}",
++    "platformPlaceholder": "openai",
++    "platformRequired": "請選擇平台",
++    "namePlaceholder": "OpenAI",
++    "nameRequired": "請輸入名稱",
++    "baseUrlPlaceholder": "https://api.openai.com/v1",
++    "baseUrlRequired": "請輸入 Base URL",
++    "apiKeyPlaceholder": "sk-…",
++    "apiKeyRequired": "請輸入 API Key",
++    "apiKeyHint": "僅管理員可讀取；其他使用者只會看到遮罩。"
++  },
++  "deleteDialog": {
++    "title": "刪除模型服務",
++    "content": "確定刪除「{{name}}」嗎？該使用者的此設定將立即失效。",
++    "ok": "刪除"
++  },
++  "message": {
++    "created": "已為該使用者建立模型服務",
++    "updated": "模型服務已更新",
++    "deleted": "已刪除"
++  }
++}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/index.ts b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/index.ts
+index 0654712..ce3be9e 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/index.ts
++++ b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/index.ts
+@@ -18,6 +18,7 @@ import guid from './guid.json';
+ import agent from './agent.json';
+ import team from './team.json';
+ import pet from './pet.json';
++import admin from './admin.json';
+ 
+ export default {
+   common,
+@@ -39,4 +40,5 @@ export default {
+   agent,
+   team,
+   pet,
++  admin,
+ };
+diff --git a/packages/web-host/src/backend-launcher.ts b/packages/web-host/src/backend-launcher.ts
+index 7d88140..95a9d29 100644
+--- a/packages/web-host/src/backend-launcher.ts
++++ b/packages/web-host/src/backend-launcher.ts
+@@ -665,7 +665,9 @@ export class BackendLifecycleManager {
+     const args = buildSpawnArgs({
+       port: this._port,
+       dbPath,
+-      local: true,
++      // Upstream hardcodes single-user local mode for the hosted web backend;
++      // per-user JWT login (identity_mode=webui) is opt-in via AIONUI_MULTIUSER=1.
++      local: process.env.AIONUI_MULTIUSER !== '1',
+       parentPid: process.pid,
+       logDir,
+       workDir: dirs?.workDir,
+diff --git a/packages/web-host/src/static-server.ts b/packages/web-host/src/static-server.ts
+index 130cc98..5711b9a 100644
+--- a/packages/web-host/src/static-server.ts
++++ b/packages/web-host/src/static-server.ts
+@@ -1,8 +1,8 @@
+ /**
+  * WebUI static server.
+  *
+- * Serves out/renderer/ as the SPA and reverse-proxies /api/*, /ws, /api/stt/stream,
+- * /login and /logout to aioncore. All auth goes to backend's aionui-auth crate;
++ * Serves out/renderer/ as the SPA (plus the /admin console entry) and
++ * reverse-proxies /api/*, /ws, /api/stt/stream, /login and /logout to aioncore. All auth goes to backend's aionui-auth crate;
+  * /login and /logout are aionui-auth's top-level paths, the rest live under
+  * /api/auth/*. /ws and /api/stt/stream are WebSocket/stream upgrades spliced at
+  * TCP level; /api/stt/stream is the STT streaming endpoint.
+@@ -11,8 +11,10 @@
+  */
+ 
+ import http, { type IncomingMessage, type Server, type ServerResponse } from 'node:http';
++import { readFile } from 'node:fs/promises';
+ import { networkInterfaces } from 'node:os';
+ import net, { type Socket } from 'node:net';
++import path from 'node:path';
+ import serveHandler from 'serve-handler';
+ 
+ export type StaticServerOptions = {
+@@ -188,10 +190,44 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
+         return;
+       }
+ 
++      // The admin console's clean URL. serve-handler applies rewrites in
++      // sequence, so a dedicated rule gets overridden by the SPA catch-all
++      // below; and rewriting to /admin.html would trip cleanUrls' .html →
++      // extensionless redirect into a loop. Serve the entry file directly,
++      // with the same no-cache rule every other HTML response gets.
++      const requestPath = req.url.split('?')[0];
++      if (requestPath === '/admin' || requestPath === '/admin/') {
++        const adminHtml = await readFile(path.join(opts.staticDir, 'admin.html')).catch((): Buffer | null => null);
++        if (adminHtml) {
++          res.writeHead(200, {
++            'content-type': 'text/html; charset=utf-8',
++            'cache-control': 'no-cache',
++            'content-length': adminHtml.byteLength,
++          });
++          res.end(req.method === 'HEAD' ? undefined : adminHtml);
++          return;
++        }
++        // No admin entry in this bundle — fall through to the SPA fallback.
++      }
++
+       // static files + SPA fallback
+       await serveHandler(req, res, {
+         public: opts.staticDir,
++        // Everything not served as a real file falls back to the main SPA shell.
+         rewrites: [{ source: '**', destination: '/index.html' }],
++        // Deploy correctness: HTML always revalidates (a new build is picked
++        // up on the next load, no hard-refresh needed), while content-hashed
++        // build assets are immutable and safe to cache for a year.
++        headers: [
++          {
++            source: '**/*.html',
++            headers: [{ key: 'Cache-Control', value: 'no-cache' }],
++          },
++          {
++            source: '**/assets/**',
++            headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
++          },
++        ],
+       });
+     } catch (err) {
+       if (!res.headersSent) {
+diff --git a/packages/web-host/src/static-server.unit.test.ts b/packages/web-host/src/static-server.unit.test.ts
+index 5adbec8..7a27a25 100644
+--- a/packages/web-host/src/static-server.unit.test.ts
++++ b/packages/web-host/src/static-server.unit.test.ts
+@@ -9,6 +9,7 @@ import { startStaticServer, type StaticServerHandle } from './static-server.js';
+ async function mkRendererFixture(): Promise<string> {
+   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-static-'));
+   await fs.writeFile(path.join(dir, 'index.html'), '<!doctype html><title>root</title>');
++  await fs.writeFile(path.join(dir, 'admin.html'), '<!doctype html><title>admin</title>');
+   await fs.mkdir(path.join(dir, 'assets'));
+   await fs.writeFile(path.join(dir, 'assets', 'main.js'), 'console.log("hi")');
+   return dir;
+@@ -66,6 +67,27 @@ describe('static-server', () => {
+     expect(await r.text()).toContain('<title>root</title>');
+   });
+ 
++  it('/admin resolves to admin.html, without shadowing the SPA fallback', async () => {
++    const backend = await startMockBackend((_req, res) => res.end('nope'));
++    stopBackend = backend.close;
++    handle = await startStaticServer({ staticDir, backendPort: backend.port, port: 0 });
++
++    for (const path of ['/admin', '/admin/']) {
++      const r = await fetch(`${handle.localUrl}${path}`);
++      expect(r.status).toBe(200);
++      expect(await r.text()).toContain('<title>admin</title>');
++    }
++
++    // The direct file URL still works…
++    const direct = await fetch(`${handle.localUrl}/admin.html`);
++    expect(direct.status).toBe(200);
++
++    // …and unrelated paths keep falling back to the main SPA shell.
++    const spa = await fetch(`${handle.localUrl}/chat/123`);
++    expect(spa.status).toBe(200);
++    expect(await spa.text()).toContain('<title>root</title>');
++  });
++
+   it('static asset /assets/main.js served', async () => {
+     const backend = await startMockBackend((_req, res) => res.end('nope'));
+     stopBackend = backend.close;
+@@ -75,6 +97,22 @@ describe('static-server', () => {
+     expect(await r.text()).toContain('hi');
+   });
+ 
++  it('cache headers: HTML no-cache, hashed assets immutable', async () => {
++    const backend = await startMockBackend((_req, res) => res.end('nope'));
++    stopBackend = backend.close;
++    handle = await startStaticServer({ staticDir, backendPort: backend.port, port: 0 });
++
++    const html = await fetch(`${handle.localUrl}/`);
++    expect(html.headers.get('cache-control')).toBe('no-cache');
++
++    // SPA fallback serves index.html too — must carry the same header.
++    const spa = await fetch(`${handle.localUrl}/chat/123`);
++    expect(spa.headers.get('cache-control')).toBe('no-cache');
++
++    const asset = await fetch(`${handle.localUrl}/assets/main.js`);
++    expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
++  });
++
+   it('/api/* reverse-proxies to backend', async () => {
+     const backend = await startMockBackend((req, res) => {
+       res.writeHead(200, { 'content-type': 'application/json' });
+diff --git a/scripts/resetpass.ts b/scripts/resetpass.ts
+index c914e2f..8120ca3 100644
+--- a/scripts/resetpass.ts
++++ b/scripts/resetpass.ts
+@@ -134,9 +134,30 @@ async function detectRunningWebUI(port: number): Promise<boolean> {
+ }
+ 
+ async function resetPasswordVia(url: string): Promise<string> {
+-  const res = await fetch(url, { method: 'POST' });
++  // CSRF double-submit: the middleware issues `aionui-csrf-token` on any
++  // wrapped response and requires the same value back in `x-csrf-token`.
++  // Node's fetch has no cookie jar, so read Set-Cookie and echo it manually.
++  // Local mode runs without the CSRF layer — skip the dance entirely.
++  const origin = new URL(url).origin;
++  const headers: Record<string, string> = {};
++  const statusRes = await fetch(`${origin}/api/auth/status`);
++  const setCookies = statusRes.headers.getSetCookie?.() ?? [];
++  const cookie = setCookies.map((c) => c.split(';')[0]).join('; ');
++  const token = /(?:^|;\s*)aionui-csrf-token=([^;]+)/.exec(cookie)?.[1];
++  if (token) {
++    headers['x-csrf-token'] = token;
++    headers.cookie = cookie;
++  }
++
++  const res = await fetch(url, { method: 'POST', headers });
+   if (!res.ok) {
+     const body = await res.text();
++    if (res.status === 403) {
++      throw new Error(
++        `reset-password refused (403): ${body || 'Forbidden'} — the endpoint is local-mode only. ` +
++          'Start the server once WITHOUT AIONUI_MULTIUSER to set the admin password, then enable it.'
++      );
++    }
+     throw new Error(`reset-password failed (${res.status}): ${body}`);
+   }
+   const payload = (await res.json()) as { data?: { new_password?: string } };
+diff --git a/scripts/webui.ts b/scripts/webui.ts
+index 468242c..d5d9bfa 100644
+--- a/scripts/webui.ts
++++ b/scripts/webui.ts
+@@ -279,6 +279,24 @@ async function main(): Promise<void> {
+             console.log(`Initial admin password: ${initialPassword}`);
+             console.log('(change them after first login)');
+           }
++        } else {
++          // Do NOT fail silently: without this line a fresh multi-user install
++          // looks like it seeded a password and the operator is locked out.
++          // The reset endpoint is local-mode only, so multi-user first boot
++          // has to seed the password before AIONUI_MULTIUSER is turned on.
++          const body = await resetRes.text().catch(() => '');
++          console.warn('');
++          console.warn(
++            `[webui] initial admin password NOT seeded (POST /api/webui/reset-password -> ${resetRes.status})`
++          );
++          if (process.env.AIONUI_MULTIUSER) {
++            console.warn('[webui] AIONUI_MULTIUSER is set: this endpoint is refused in multi-user mode by design.');
++            console.warn(
++              '[webui] Start once WITHOUT AIONUI_MULTIUSER to generate the password, then enable it — or run `bun run resetpass` in local mode.'
++            );
++          } else if (body) {
++            console.warn(`[webui] ${body}`);
++          }
+         }
+       } else {
+         // Credentials already exist; just remind the user what username to use.
 diff --git a/tests/unit/adapter/httpBridgeRefresh.dom.test.ts b/tests/unit/adapter/httpBridgeRefresh.dom.test.ts
 index 4483439..985a924 100644
 --- a/tests/unit/adapter/httpBridgeRefresh.dom.test.ts
@@ -354,4 +2914,162 @@ index 6da14b5..4c31a14 100644
    });
  
    it('is a no-op (no fetch) outside WebUI browser mode', async () => {
-
+diff --git a/tests/unit/conversation/runtime/conversationListSyncReconcile.dom.test.ts b/tests/unit/conversation/runtime/conversationListSyncReconcile.dom.test.ts
+index dc23881..e22f1d4 100644
+--- a/tests/unit/conversation/runtime/conversationListSyncReconcile.dom.test.ts
++++ b/tests/unit/conversation/runtime/conversationListSyncReconcile.dom.test.ts
+@@ -34,6 +34,10 @@ vi.mock('@/common', () => ({
+ 
+ vi.mock('@/renderer/utils/emitter', () => ({ addEventListener: () => () => {} }));
+ 
++vi.mock('@/renderer/hooks/context/AuthContext', () => ({
++  useAuth: () => ({ user: { id: 'test-user', username: 'tester' }, status: 'authenticated' }),
++}));
++
+ import {
+   reconcileGeneratingFromRuntime,
+   useConversationListSync,
+diff --git a/tests/unit/previews/OfficeWatchViewer.dom.test.tsx b/tests/unit/previews/OfficeWatchViewer.dom.test.tsx
+index a0e7cac..319e020 100644
+--- a/tests/unit/previews/OfficeWatchViewer.dom.test.tsx
++++ b/tests/unit/previews/OfficeWatchViewer.dom.test.tsx
+@@ -17,7 +17,13 @@
+  * is recorded in N4c-final.md Deviations.
+  */
+ 
+-import { afterEach, beforeEach, describe, it, expect } from 'vitest';
++import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
++
++// Cold-import shape tests: under the full concurrent suite the first import
++// queues behind the transform of hundreds of files and has been observed
++// exceeding 30s (isolated ~15s). Assertions are unchanged — once the module
++// is cached the rest of this file runs instantly.
++vi.setConfig({ testTimeout: 120000, hookTimeout: 120000 });
+ 
+ describe('OfficeWatchViewer module shape', () => {
+   it('module loads and exposes a default export', async () => {
+diff --git a/tests/unit/previews/PreviewPanel.dom.test.tsx b/tests/unit/previews/PreviewPanel.dom.test.tsx
+index 283255d..7513f03 100644
+--- a/tests/unit/previews/PreviewPanel.dom.test.tsx
++++ b/tests/unit/previews/PreviewPanel.dom.test.tsx
+@@ -26,10 +26,12 @@ afterEach(() => {
+ });
+ 
+ // PreviewPanel pulls in a large dependency graph; under the full concurrent
+-// suite the first cold import's transform/resolve can exceed the default 10s
+-// timeout (flaky), even though it resolves in a few seconds in isolation. Give
+-// these import-bound assertions extra headroom so they don't flake.
+-const IMPORT_TIMEOUT_MS = 30000;
++// suite the first cold import's transform/resolve queues behind hundreds of
++// files and can blow past both the default budget and a 30s raise (observed
++// flaking at 30s on a loaded machine; isolated runs take ~15s). Give these
++// import-bound assertions generous headroom so they don't flake — assertions
++// themselves are unchanged and run instantly once the module is cached.
++const IMPORT_TIMEOUT_MS = 120000;
+ 
+ describe('PreviewPanel', () => {
+   it(
+diff --git a/tests/unit/renderer/hooks/useConversationListSyncIdentity.dom.test.tsx b/tests/unit/renderer/hooks/useConversationListSyncIdentity.dom.test.tsx
+new file mode 100644
+index 0000000..b2ee3cb
+--- /dev/null
++++ b/tests/unit/renderer/hooks/useConversationListSyncIdentity.dom.test.tsx
+@@ -0,0 +1,83 @@
++/**
++ * @license
++ * Copyright 2026 AionUi (aionui.com)
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++/**
++ * Privacy regression (multi-user WebUI): the conversation list lives in a
++ * module-level renderer store that outlives logout. Switching accounts must
++ * wipe the previous account's rows before the next identity loads — one
++ * account's sidebar titles must never render for another.
++ */
++
++import { renderHook, waitFor, act } from '@testing-library/react';
++import { describe, expect, it, vi } from 'vitest';
++
++const authState = vi.hoisted(() => ({
++  user: { id: 'user-a', username: 'alice' } as { id: string; username: string } | null,
++  status: 'authenticated',
++}));
++
++vi.mock('@/renderer/hooks/context/AuthContext', () => ({
++  useAuth: () => ({ user: authState.user, status: authState.status }),
++}));
++
++vi.mock('@/renderer/utils/emitter', () => ({ addEventListener: vi.fn() }));
++
++vi.mock('@/common', () => {
++  let calls = 0;
++  return {
++    ipcBridge: {
++      database: {
++        getUserConversations: {
++          invoke: vi.fn(() => {
++            calls += 1;
++            if (calls === 1) {
++              // First load (as user-a): one "secret" conversation.
++              return Promise.resolve({
++                items: [{ id: 'conv-secret', name: 'secret title', extra: {} }],
++              });
++            }
++            // Any later load (user-b): empty.
++            return Promise.resolve({ items: [] });
++          }),
++        },
++      },
++      conversation: {
++        listChanged: { on: () => () => {} },
++        responseStream: { on: () => () => {} },
++        turnCompleted: { on: () => () => {} },
++        confirmation: { remove: { on: () => () => {} } },
++      },
++      application: {
++        writeRendererLog: { invoke: () => Promise.resolve(undefined) },
++      },
++    },
++  };
++});
++
++import { useConversationListSync } from '@/renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync';
++
++describe('useConversationListSync identity switch', () => {
++  it('wipes the previous account rows and unread flags when the user id changes', async () => {
++    const { result, rerender } = renderHook(() => useConversationListSync());
++
++    // user-a's list loads.
++    await waitFor(() => expect(result.current.conversations).toHaveLength(1));
++    expect(result.current.conversations[0]?.name).toBe('secret title');
++
++    // Simulate an unread flag left behind for the secret conversation.
++    localStorage.setItem('conversation-manual-unread-ids', JSON.stringify(['conv-secret']));
++
++    // Switch identity to user-b (login page also resets synchronously; this
++    // covers every other entry path).
++    act(() => {
++      authState.user = { id: 'user-b', username: 'bob' };
++    });
++    rerender();
++
++    await waitFor(() => expect(result.current.conversations).toHaveLength(0));
++    expect(JSON.parse(localStorage.getItem('conversation-manual-unread-ids') ?? '[]')).toEqual([]);
++  });
++});
+diff --git a/tests/unit/renderer/hooks/useConversationListSyncManualUnread.dom.test.tsx b/tests/unit/renderer/hooks/useConversationListSyncManualUnread.dom.test.tsx
+index 43d527b..1240ac8 100644
+--- a/tests/unit/renderer/hooks/useConversationListSyncManualUnread.dom.test.tsx
++++ b/tests/unit/renderer/hooks/useConversationListSyncManualUnread.dom.test.tsx
+@@ -11,6 +11,10 @@ vi.mock('@/renderer/utils/emitter', () => ({
+   addEventListener: vi.fn(),
+ }));
+ 
++vi.mock('@/renderer/hooks/context/AuthContext', () => ({
++  useAuth: () => ({ user: { id: 'test-user', username: 'tester' }, status: 'authenticated' }),
++}));
++
+ vi.mock('@/common', () => ({
+   ipcBridge: {
+     database: {

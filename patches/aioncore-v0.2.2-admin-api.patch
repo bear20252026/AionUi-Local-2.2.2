@@ -1,0 +1,801 @@
+diff --git a/crates/aionui-api-types/src/auth.rs b/crates/aionui-api-types/src/auth.rs
+index 5d6debd..a96d83d 100644
+--- a/crates/aionui-api-types/src/auth.rs
++++ b/crates/aionui-api-types/src/auth.rs
+@@ -9,6 +9,24 @@ pub struct PublicUser {
+     pub username: String,
+ }
+ 
++/// Admin console user listing entry (`GET /api/admin/users`).
++///
++/// Deliberately excludes `password_hash`, `jwt_secret` and
++/// `encryption_secret` — those must never reach an API response.
++#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
++pub struct AdminUserResponse {
++    pub id: String,
++    pub username: String,
++    /// `UserType` as its string form (`local` / `external`).
++    pub user_type: String,
++    /// `UserStatus` as its string form (`active` / `disabled`).
++    pub status: String,
++    pub created_at: i64,
++    pub last_login: Option<i64>,
++    /// True for the primary WebUI (admin) account.
++    pub is_primary: bool,
++}
++
+ /// Login request body for `POST /login`.
+ #[derive(Debug, Deserialize)]
+ pub struct LoginRequest {
+diff --git a/crates/aionui-api-types/src/lib.rs b/crates/aionui-api-types/src/lib.rs
+index 6bb062a..377432d 100644
+--- a/crates/aionui-api-types/src/lib.rs
++++ b/crates/aionui-api-types/src/lib.rs
+@@ -76,11 +76,12 @@ pub use assistant::{
+     is_local_avatar_value,
+ };
+ pub use auth::{
+-    AuthStatusResponse, ChangePasswordRequest, EnsureExternalSessionRequest, EnsureExternalSessionResponse,
+-    EnsureExternalUserRequest, EnsureExternalUserResponse, ExternalUserType, InternalAuthErrorCode, LoginRequest,
+-    LoginResponse, PublicUser, QrLoginRequest, RefreshResponse, RefreshTokenRequest, RevokeExternalSessionRequest,
+-    RevokeExternalSessionResponse, UserInfoResponse, WebuiChangePasswordRequest, WebuiChangeUsernameRequest,
+-    WebuiChangeUsernameResponse, WebuiGenerateQrTokenResponse, WebuiResetPasswordResponse, WsTokenResponse,
++    AdminUserResponse, AuthStatusResponse, ChangePasswordRequest, EnsureExternalSessionRequest,
++    EnsureExternalSessionResponse, EnsureExternalUserRequest, EnsureExternalUserResponse, ExternalUserType,
++    InternalAuthErrorCode, LoginRequest, LoginResponse, PublicUser, QrLoginRequest, RefreshResponse,
++    RefreshTokenRequest, RevokeExternalSessionRequest, RevokeExternalSessionResponse, UserInfoResponse,
++    WebuiChangePasswordRequest, WebuiChangeUsernameRequest, WebuiChangeUsernameResponse, WebuiGenerateQrTokenResponse,
++    WebuiResetPasswordResponse, WsTokenResponse,
+ };
+ pub use channel::{
+     ApprovePairingRequest, BridgeResponse, ChannelAssistantSettingRequest, ChannelAssistantSettingResponse,
+diff --git a/crates/aionui-app/src/router/state.rs b/crates/aionui-app/src/router/state.rs
+index 55db9ea..12ca301 100644
+--- a/crates/aionui-app/src/router/state.rs
++++ b/crates/aionui-app/src/router/state.rs
+@@ -22,7 +22,7 @@ use aionui_db::{
+     SqliteAssistantOverlayRepository, SqliteAssistantOverrideRepository, SqliteAssistantPreferenceRepository,
+     SqliteAssistantRepository, SqliteClientPreferenceRepository, SqliteConversationRepository,
+     SqliteFeedbackDiagnosticsRepository, SqliteProviderRepository, SqliteRemoteAgentRepository,
+-    SqliteSettingsRepository,
++    SqliteSettingsRepository, SqliteUserRepository,
+ };
+ use aionui_extension::{
+     AssistantRuleDispatcher, ExtensionRegistry, ExtensionRouterState, ExtensionStateStore, ExternalPathsManager,
+@@ -498,8 +498,9 @@ pub fn build_system_state(services: &AppServices) -> SystemRouterState {
+         version_check_service: VersionCheckService::new(http_client, env!("CARGO_PKG_VERSION").to_owned()),
+         runtime_prepare_service: RuntimePrepareService::new(services.event_bus.clone()),
+         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
+-            SqliteFeedbackDiagnosticsRepository::new(pool),
++            SqliteFeedbackDiagnosticsRepository::new(pool.clone()),
+         )),
++        user_repo: Arc::new(SqliteUserRepository::new(pool)),
+     }
+ }
+ 
+diff --git a/crates/aionui-system/src/routes.rs b/crates/aionui-system/src/routes.rs
+index 03034b8..0aa21db 100644
+--- a/crates/aionui-system/src/routes.rs
++++ b/crates/aionui-system/src/routes.rs
+@@ -1,20 +1,23 @@
+ #![allow(clippy::disallowed_types)]
+ 
++use std::sync::Arc;
++
+ use axum::Router;
+ use axum::extract::rejection::JsonRejection;
+ use axum::extract::{Extension, Json, Path, Query, State};
+ use axum::http::StatusCode;
+-use axum::routing::{delete, get, post};
++use axum::routing::{delete, get, post, put};
+ 
+ use aionui_api_types::{
+-    ApiResponse, ClientPreferencesResponse, CreateProviderRequest, CurrentUserResponse, DetectProtocolRequest,
+-    EnsureNodeRuntimeRequest, EnsureNodeRuntimeResponse, FeedbackDiagnosticsQuery, FeedbackDiagnosticsResponse,
+-    FetchModelsAnonymousRequest, FetchModelsRequest, FetchModelsResponse, ProtocolDetectionResponse, ProviderResponse,
+-    SystemInfoResponse, SystemSettingsResponse, UpdateCheckRequest, UpdateCheckResult, UpdateClientPreferencesRequest,
+-    UpdateProviderRequest, UpdateSettingsRequest,
++    AdminUserResponse, ApiResponse, ClientPreferencesResponse, CreateProviderRequest, CurrentUserResponse,
++    DetectProtocolRequest, EnsureNodeRuntimeRequest, EnsureNodeRuntimeResponse, FeedbackDiagnosticsQuery,
++    FeedbackDiagnosticsResponse, FetchModelsAnonymousRequest, FetchModelsRequest, FetchModelsResponse,
++    ProtocolDetectionResponse, ProviderResponse, SystemInfoResponse, SystemSettingsResponse, UpdateCheckRequest,
++    UpdateCheckResult, UpdateClientPreferencesRequest, UpdateProviderRequest, UpdateSettingsRequest,
+ };
+ use aionui_auth::CurrentUser;
+ use aionui_common::ApiError;
++use aionui_db::IUserRepository;
+ 
+ use crate::client_pref::ClientPrefService;
+ use crate::diagnostics::FeedbackDiagnosticsService;
+@@ -37,6 +40,8 @@ pub struct SystemRouterState {
+     pub version_check_service: VersionCheckService,
+     pub runtime_prepare_service: RuntimePrepareService,
+     pub feedback_diagnostics_service: FeedbackDiagnosticsService,
++    /// User repository for the admin console (`/api/admin/*`).
++    pub user_repo: Arc<dyn IUserRepository>,
+ }
+ 
+ impl From<SystemError> for ApiError {
+@@ -89,6 +94,18 @@ pub fn system_routes(state: SystemRouterState) -> Router {
+         .route("/api/providers/fetch-models", post(fetch_models_anonymous))
+         .route("/api/providers/{id}", delete(delete_provider).put(update_provider))
+         .route("/api/providers/{id}/models", post(fetch_models))
++        // Admin console (multi-user WebUI): manage users' providers on their
++        // behalf. Gated to the seed admin inside every handler; the router
++        // itself is behind the authenticated layer like the rest of this file.
++        .route("/api/admin/users", get(list_admin_users))
++        .route(
++            "/api/admin/users/{user_id}/providers",
++            get(admin_list_providers).post(admin_create_provider),
++        )
++        .route(
++            "/api/admin/users/{user_id}/providers/{provider_id}",
++            put(admin_update_provider).delete(admin_delete_provider),
++        )
+         .route("/api/system/current-user", get(get_current_user))
+         .route("/api/system/info", get(get_system_info))
+         .route("/api/system/check-update", post(check_update))
+@@ -194,11 +211,55 @@ async fn update_client_preferences(
+ // Provider handlers
+ // ===========================================================================
+ 
++/// The fixed seed account (aionui-db seeds `id = system_default_user`): the
++/// admin console identity. The id never changes even if the username is
++/// renamed, so gating and masking both key off it.
++const ADMIN_USER_ID: &str = "system_default_user";
++
++/// Stand-in returned to non-admin callers instead of a real API key, and
++/// recognized on update as "keep the stored key" (clients may echo a masked
++/// value straight back when saving an untouched form).
++const MASKED_API_KEY: &str = "********";
++
++fn require_admin(user: &CurrentUser) -> Result<(), ApiError> {
++    if user.id == ADMIN_USER_ID {
++        Ok(())
++    } else {
++        Err(ApiError::Forbidden("Administrator access required".into()))
++    }
++}
++
++/// Replace the decrypted key with the mask — non-admin requesters (e.g. a
++/// guest using an admin-provisioned provider) must be able to USE the key but
++/// never read it.
++fn mask_provider_key(mut provider: ProviderResponse) -> ProviderResponse {
++    provider.api_key = MASKED_API_KEY.to_string();
++    provider
++}
++
++fn maybe_mask_for(user: &CurrentUser, provider: ProviderResponse) -> ProviderResponse {
++    if user.id == ADMIN_USER_ID {
++        provider
++    } else {
++        mask_provider_key(provider)
++    }
++}
++
++/// Map a repository error through `SystemError` into the shared API error.
++fn db_err(error: aionui_db::DbError) -> ApiError {
++    ApiError::from(SystemError::from(error))
++}
++
+ async fn list_providers(
+     State(state): State<SystemRouterState>,
+     Extension(user): Extension<CurrentUser>,
+ ) -> Result<Json<ApiResponse<Vec<ProviderResponse>>>, ApiError> {
+     let providers = state.provider_service.list(&user.id).await.map_err(ApiError::from)?;
++    let providers = if user.id == ADMIN_USER_ID {
++        providers
++    } else {
++        providers.into_iter().map(mask_provider_key).collect()
++    };
+     Ok(Json(ApiResponse::ok(providers)))
+ }
+ 
+@@ -213,7 +274,10 @@ async fn create_provider(
+         .create(&user.id, req)
+         .await
+         .map_err(ApiError::from)?;
+-    Ok((StatusCode::CREATED, Json(ApiResponse::ok(provider))))
++    Ok((
++        StatusCode::CREATED,
++        Json(ApiResponse::ok(maybe_mask_for(&user, provider))),
++    ))
+ }
+ 
+ async fn update_provider(
+@@ -222,13 +286,17 @@ async fn update_provider(
+     Path(id): Path<String>,
+     body: Result<Json<UpdateProviderRequest>, JsonRejection>,
+ ) -> Result<Json<ApiResponse<ProviderResponse>>, ApiError> {
+-    let Json(req) = body.map_err(ApiError::from)?;
++    let Json(mut req) = body.map_err(ApiError::from)?;
++    // A masked key echoed back by an unchanged edit form means "no change".
++    if req.api_key.as_deref() == Some(MASKED_API_KEY) {
++        req.api_key = None;
++    }
+     let provider = state
+         .provider_service
+         .update(&user.id, &id, req)
+         .await
+         .map_err(ApiError::from)?;
+-    Ok(Json(ApiResponse::ok(provider)))
++    Ok(Json(ApiResponse::ok(maybe_mask_for(&user, provider))))
+ }
+ 
+ async fn delete_provider(
+@@ -285,6 +353,110 @@ async fn detect_protocol(
+     Ok(Json(ApiResponse::ok(result)))
+ }
+ 
++// ===========================================================================
++// Admin console handlers (`/api/admin/*`, admin identity only)
++// ===========================================================================
++
++/// Ensure the target user of an admin operation exists (404 otherwise).
++async fn ensure_user_exists(state: &SystemRouterState, user_id: &str) -> Result<(), ApiError> {
++    let user = state.user_repo.find_by_id(user_id).await.map_err(db_err)?;
++    if user.is_none() {
++        return Err(ApiError::NotFound("User not found".into()));
++    }
++    Ok(())
++}
++
++/// `GET /api/admin/users` — list all local accounts for the admin console.
++async fn list_admin_users(
++    State(state): State<SystemRouterState>,
++    Extension(user): Extension<CurrentUser>,
++) -> Result<Json<ApiResponse<Vec<AdminUserResponse>>>, ApiError> {
++    require_admin(&user)?;
++    let primary = state.user_repo.get_primary_webui_user().await.map_err(db_err)?;
++    let primary_id = primary.map(|u| u.id);
++    let users = state.user_repo.list_users().await.map_err(db_err)?;
++    let items = users
++        .into_iter()
++        .map(|u| AdminUserResponse {
++            is_primary: Some(u.id.clone()) == primary_id,
++            id: u.id,
++            username: u.username.unwrap_or_default(),
++            user_type: u.user_type.as_str().to_owned(),
++            status: u.status.as_str().to_owned(),
++            created_at: u.created_at,
++            last_login: u.last_login,
++        })
++        .collect();
++    Ok(Json(ApiResponse::ok(items)))
++}
++
++/// `GET /api/admin/users/{user_id}/providers` — providers of a target user,
++/// plaintext keys visible (the admin manages them).
++async fn admin_list_providers(
++    State(state): State<SystemRouterState>,
++    Extension(user): Extension<CurrentUser>,
++    Path(user_id): Path<String>,
++) -> Result<Json<ApiResponse<Vec<ProviderResponse>>>, ApiError> {
++    require_admin(&user)?;
++    ensure_user_exists(&state, &user_id).await?;
++    let providers = state.provider_service.list(&user_id).await.map_err(ApiError::from)?;
++    Ok(Json(ApiResponse::ok(providers)))
++}
++
++/// `POST /api/admin/users/{user_id}/providers` — provision a provider (with
++/// its API key) for another user.
++async fn admin_create_provider(
++    State(state): State<SystemRouterState>,
++    Extension(user): Extension<CurrentUser>,
++    Path(user_id): Path<String>,
++    body: Result<Json<CreateProviderRequest>, JsonRejection>,
++) -> Result<(StatusCode, Json<ApiResponse<ProviderResponse>>), ApiError> {
++    require_admin(&user)?;
++    ensure_user_exists(&state, &user_id).await?;
++    let Json(req) = body.map_err(ApiError::from)?;
++    let provider = state
++        .provider_service
++        .create(&user_id, req)
++        .await
++        .map_err(ApiError::from)?;
++    Ok((StatusCode::CREATED, Json(ApiResponse::ok(provider))))
++}
++
++/// `PUT /api/admin/users/{user_id}/providers/{provider_id}` — update a
++/// target user's provider (e.g. rotate the key).
++async fn admin_update_provider(
++    State(state): State<SystemRouterState>,
++    Extension(user): Extension<CurrentUser>,
++    Path((user_id, provider_id)): Path<(String, String)>,
++    body: Result<Json<UpdateProviderRequest>, JsonRejection>,
++) -> Result<Json<ApiResponse<ProviderResponse>>, ApiError> {
++    require_admin(&user)?;
++    ensure_user_exists(&state, &user_id).await?;
++    let Json(req) = body.map_err(ApiError::from)?;
++    let provider = state
++        .provider_service
++        .update(&user_id, &provider_id, req)
++        .await
++        .map_err(ApiError::from)?;
++    Ok(Json(ApiResponse::ok(provider)))
++}
++
++/// `DELETE /api/admin/users/{user_id}/providers/{provider_id}`.
++async fn admin_delete_provider(
++    State(state): State<SystemRouterState>,
++    Extension(user): Extension<CurrentUser>,
++    Path((user_id, provider_id)): Path<(String, String)>,
++) -> Result<Json<ApiResponse<()>>, ApiError> {
++    require_admin(&user)?;
++    ensure_user_exists(&state, &user_id).await?;
++    state
++        .provider_service
++        .delete(&user_id, &provider_id)
++        .await
++        .map_err(ApiError::from)?;
++    Ok(Json(ApiResponse::success()))
++}
++
+ // ===========================================================================
+ // System info & version check handlers
+ // ===========================================================================
+diff --git a/crates/aionui-system/tests/admin_routes.rs b/crates/aionui-system/tests/admin_routes.rs
+new file mode 100644
+index 0000000..ca40f52
+--- /dev/null
++++ b/crates/aionui-system/tests/admin_routes.rs
+@@ -0,0 +1,309 @@
++//! Black-box integration tests for the admin console routes
++//! (`/api/admin/*`) and API-key masking on the regular provider routes.
++//!
++//! CurrentUser is injected via request extensions (same pattern as
++//! `provider_routes.rs`) — no auth middleware in this suite.
++
++use std::sync::Arc;
++
++use aionui_realtime::BroadcastEventBus;
++use axum::body::Body;
++use axum::http::{Request, StatusCode};
++use http_body_util::BodyExt;
++use serde_json::json;
++use tower::ServiceExt;
++
++use aionui_auth::CurrentUser;
++use aionui_db::{
++    SqliteClientPreferenceRepository, SqliteFeedbackDiagnosticsRepository, SqliteProviderRepository,
++    SqliteSettingsRepository, SqliteUserRepository, UserStatus, UserType, init_database_memory,
++};
++use aionui_system::{
++    ClientPrefService, FeedbackDiagnosticsService, ModelFetchService, ProtocolDetectionService, ProviderService,
++    RuntimePrepareService, SettingsService, SystemRouterState, VersionCheckService, system_routes,
++};
++
++const TEST_ENCRYPTION_KEY: [u8; 32] = [0x42; 32];
++const ADMIN_ID: &str = "system_default_user";
++const GUEST_ID: &str = "user_guest";
++const MASK: &str = "********";
++
++fn build_state(db: &aionui_db::Database) -> SystemRouterState {
++    let provider_repo = Arc::new(SqliteProviderRepository::new(db.pool().clone()));
++    let http_client = reqwest::Client::new();
++    SystemRouterState {
++        settings_service: SettingsService::new(Arc::new(SqliteSettingsRepository::new(db.pool().clone()))),
++        client_pref_service: ClientPrefService::new(Arc::new(SqliteClientPreferenceRepository::new(db.pool().clone()))),
++        provider_service: ProviderService::new(provider_repo.clone(), TEST_ENCRYPTION_KEY),
++        model_fetch_service: ModelFetchService::new(provider_repo, TEST_ENCRYPTION_KEY, http_client.clone()),
++        protocol_detection_service: ProtocolDetectionService::new(http_client.clone()),
++        version_check_service: VersionCheckService::new(http_client, "0.1.0".to_owned()),
++        runtime_prepare_service: RuntimePrepareService::new(Arc::new(BroadcastEventBus::new(16))),
++        feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
++            SqliteFeedbackDiagnosticsRepository::new(db.pool().clone()),
++        )),
++        user_repo: Arc::new(SqliteUserRepository::new(db.pool().clone())),
++    }
++}
++
++async fn setup() -> axum::Router {
++    let db = init_database_memory().await.unwrap();
++    // `init_database_memory` already seeds `system_default_user` (username `admin`),
++    // so only the second account has to be inserted here.
++    sqlx::query(
++        "INSERT INTO users (id, user_type, username, password_hash, status, session_generation, created_at, updated_at) \
++         VALUES (?, 'local', ?, '', 'active', 0, 1, 1)",
++    )
++    .bind(GUEST_ID)
++    .bind("guest")
++    .execute(db.pool())
++    .await
++    .unwrap();
++    system_routes(build_state(&db))
++}
++
++async fn body_json(resp: axum::response::Response) -> serde_json::Value {
++    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
++    serde_json::from_slice(&bytes).unwrap()
++}
++
++fn request_for_user(user_id: &str, method: &str, uri: &str, body: Option<serde_json::Value>) -> Request<Body> {
++    let builder = Request::builder().method(method).uri(uri);
++    let builder = match &body {
++        Some(_) => builder.header("content-type", "application/json"),
++        None => builder,
++    };
++    let body = match body {
++        Some(value) => Body::from(serde_json::to_vec(&value).unwrap()),
++        None => Body::empty(),
++    };
++    let mut req = builder.body(body).unwrap();
++    req.extensions_mut().insert(CurrentUser {
++        id: user_id.to_owned(),
++        username: user_id.to_owned(),
++        user_type: UserType::Local,
++        status: UserStatus::Active,
++    });
++    req
++}
++
++fn sample_provider(name: &str) -> serde_json::Value {
++    json!({
++        "platform": "openai",
++        "name": name,
++        "base_url": "https://api.example.com/v1",
++        "api_key": "sk-real-secret-key-123"
++    })
++}
++
++// ---------------------------------------------------------------------------
++// Admin gate
++// ---------------------------------------------------------------------------
++
++#[tokio::test]
++async fn admin_users_requires_admin_identity() {
++    let app = setup().await;
++    let resp = app
++        .oneshot(request_for_user(GUEST_ID, "GET", "/api/admin/users", None))
++        .await
++        .unwrap();
++    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
++    let json = body_json(resp).await;
++    assert_eq!(json["code"], "FORBIDDEN");
++}
++
++#[tokio::test]
++async fn admin_cannot_provision_for_others() {
++    let app = setup().await;
++    let resp = app
++        .oneshot(request_for_user(
++            GUEST_ID,
++            "POST",
++            "/api/admin/users/system_default_user/providers",
++            Some(sample_provider("evil")),
++        ))
++        .await
++        .unwrap();
++    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
++}
++
++// ---------------------------------------------------------------------------
++// GET /api/admin/users
++// ---------------------------------------------------------------------------
++
++#[tokio::test]
++async fn admin_lists_users_with_primary_flag() {
++    let app = setup().await;
++    let resp = app
++        .oneshot(request_for_user(ADMIN_ID, "GET", "/api/admin/users", None))
++        .await
++        .unwrap();
++    assert_eq!(resp.status(), StatusCode::OK);
++    let json = body_json(resp).await;
++    let users = json["data"].as_array().unwrap();
++    assert_eq!(users.len(), 2);
++
++    let primary = users.iter().find(|u| u["id"] == ADMIN_ID).unwrap();
++    assert_eq!(primary["username"], "admin");
++    assert_eq!(primary["is_primary"], true);
++
++    let guest = users.iter().find(|u| u["id"] == GUEST_ID).unwrap();
++    assert_eq!(guest["username"], "guest");
++    assert_eq!(guest["is_primary"], false);
++
++    // Secrets must never appear in the listing.
++    let raw = json.to_string();
++    assert!(!raw.contains("password_hash"));
++    assert!(!raw.contains("jwt_secret"));
++}
++
++#[tokio::test]
++async fn admin_provision_for_missing_user_is_404() {
++    let app = setup().await;
++    let resp = app
++        .oneshot(request_for_user(
++            ADMIN_ID,
++            "POST",
++            "/api/admin/users/nope/providers",
++            Some(sample_provider("x")),
++        ))
++        .await
++        .unwrap();
++    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
++}
++
++// ---------------------------------------------------------------------------
++// Provisioning + masking round-trip
++// ---------------------------------------------------------------------------
++
++#[tokio::test]
++async fn admin_provisions_guest_provider_and_guest_sees_masked_key() {
++    let app = setup().await;
++
++    // 1. Admin provisions a provider (with the real key) for the guest.
++    let resp = app
++        .clone()
++        .oneshot(request_for_user(
++            ADMIN_ID,
++            "POST",
++            &format!("/api/admin/users/{GUEST_ID}/providers"),
++            Some(sample_provider("Guest LLM")),
++        ))
++        .await
++        .unwrap();
++    assert_eq!(resp.status(), StatusCode::CREATED);
++    let created = body_json(resp).await;
++    assert_eq!(created["data"]["api_key"], "sk-real-secret-key-123");
++    let provider_id = created["data"]["id"].as_str().unwrap().to_string();
++
++    // 2. Admin reads it back in plaintext via the admin route.
++    let resp = app
++        .clone()
++        .oneshot(request_for_user(
++            ADMIN_ID,
++            "GET",
++            &format!("/api/admin/users/{GUEST_ID}/providers"),
++            None,
++        ))
++        .await
++        .unwrap();
++    let json = body_json(resp).await;
++    assert_eq!(json["data"][0]["api_key"], "sk-real-secret-key-123");
++
++    // 3. The guest's own provider list masks the key.
++    let resp = app
++        .clone()
++        .oneshot(request_for_user(GUEST_ID, "GET", "/api/providers", None))
++        .await
++        .unwrap();
++    let json = body_json(resp).await;
++    assert_eq!(json["data"].as_array().unwrap().len(), 1);
++    assert_eq!(json["data"][0]["api_key"], MASK);
++
++    // 4. Guest echoing the mask back on update must keep the stored key.
++    let resp = app
++        .clone()
++        .oneshot(request_for_user(
++            GUEST_ID,
++            "PUT",
++            &format!("/api/providers/{provider_id}"),
++            Some(json!({ "enabled": false, "api_key": MASK })),
++        ))
++        .await
++        .unwrap();
++    assert_eq!(resp.status(), StatusCode::OK);
++
++    let resp = app
++        .clone()
++        .oneshot(request_for_user(
++            ADMIN_ID,
++            "GET",
++            &format!("/api/admin/users/{GUEST_ID}/providers"),
++            None,
++        ))
++        .await
++        .unwrap();
++    let json = body_json(resp).await;
++    assert_eq!(json["data"][0]["enabled"], false);
++    assert_eq!(
++        json["data"][0]["api_key"], "sk-real-secret-key-123",
++        "echoing the masked value must not clobber the stored key"
++    );
++
++    // 5. Admin deletes the provider for the guest.
++    let resp = app
++        .clone()
++        .oneshot(request_for_user(
++            ADMIN_ID,
++            "DELETE",
++            &format!("/api/admin/users/{GUEST_ID}/providers/{provider_id}"),
++            None,
++        ))
++        .await
++        .unwrap();
++    assert_eq!(resp.status(), StatusCode::OK);
++
++    let resp = app
++        .oneshot(request_for_user(GUEST_ID, "GET", "/api/providers", None))
++        .await
++        .unwrap();
++    let json = body_json(resp).await;
++    assert_eq!(json["data"].as_array().unwrap().len(), 0);
++}
++
++#[tokio::test]
++async fn admin_own_provider_list_stays_plaintext() {
++    let app = setup().await;
++    let resp = app
++        .clone()
++        .oneshot(request_for_user(ADMIN_ID, "POST", "/api/providers", Some(sample_provider("Mine"))))
++        .await
++        .unwrap();
++    assert_eq!(resp.status(), StatusCode::CREATED);
++
++    let resp = app
++        .oneshot(request_for_user(ADMIN_ID, "GET", "/api/providers", None))
++        .await
++        .unwrap();
++    let json = body_json(resp).await;
++    assert_eq!(json["data"][0]["api_key"], "sk-real-secret-key-123");
++}
++
++#[tokio::test]
++async fn guest_cannot_see_own_key_in_plaintext() {
++    let app = setup().await;
++    // The guest configures their own provider — still masked on read.
++    let resp = app
++        .clone()
++        .oneshot(request_for_user(GUEST_ID, "POST", "/api/providers", Some(sample_provider("Self"))))
++        .await
++        .unwrap();
++    assert_eq!(resp.status(), StatusCode::CREATED);
++    assert_eq!(body_json(resp).await["data"]["api_key"], MASK);
++
++    let resp = app
++        .oneshot(request_for_user(GUEST_ID, "GET", "/api/providers", None))
++        .await
++        .unwrap();
++    assert_eq!(body_json(resp).await["data"][0]["api_key"], MASK);
++}
+diff --git a/crates/aionui-system/tests/current_user_routes.rs b/crates/aionui-system/tests/current_user_routes.rs
+index b4724b4..f5bd803 100644
+--- a/crates/aionui-system/tests/current_user_routes.rs
++++ b/crates/aionui-system/tests/current_user_routes.rs
+@@ -49,6 +49,7 @@ async fn setup() -> axum::Router {
+         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
+             SqliteFeedbackDiagnosticsRepository::new(db.pool().clone()),
+         )),
++        user_repo: Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone())),
+     };
+     system_routes(state)
+ }
+diff --git a/crates/aionui-system/tests/feedback_diagnostics_routes.rs b/crates/aionui-system/tests/feedback_diagnostics_routes.rs
+index bc1d915..1cf1ef1 100644
+--- a/crates/aionui-system/tests/feedback_diagnostics_routes.rs
++++ b/crates/aionui-system/tests/feedback_diagnostics_routes.rs
+@@ -33,6 +33,7 @@ fn build_state(db: &aionui_db::Database) -> SystemRouterState {
+         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
+             SqliteFeedbackDiagnosticsRepository::new(db.pool().clone()),
+         )),
++        user_repo: Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone())),
+     }
+ }
+ 
+diff --git a/crates/aionui-system/tests/model_fetch_routes.rs b/crates/aionui-system/tests/model_fetch_routes.rs
+index b992910..d3070a6 100644
+--- a/crates/aionui-system/tests/model_fetch_routes.rs
++++ b/crates/aionui-system/tests/model_fetch_routes.rs
+@@ -46,6 +46,7 @@ fn build_state(db: &aionui_db::Database) -> SystemRouterState {
+         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
+             SqliteFeedbackDiagnosticsRepository::new(db.pool().clone()),
+         )),
++        user_repo: Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone())),
+     }
+ }
+ 
+diff --git a/crates/aionui-system/tests/protocol_detection_routes.rs b/crates/aionui-system/tests/protocol_detection_routes.rs
+index 3ea71c1..bfa3ae8 100644
+--- a/crates/aionui-system/tests/protocol_detection_routes.rs
++++ b/crates/aionui-system/tests/protocol_detection_routes.rs
+@@ -43,6 +43,7 @@ fn build_state(db: &aionui_db::Database) -> SystemRouterState {
+         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
+             SqliteFeedbackDiagnosticsRepository::new(db.pool().clone()),
+         )),
++        user_repo: Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone())),
+     }
+ }
+ 
+diff --git a/crates/aionui-system/tests/provider_routes.rs b/crates/aionui-system/tests/provider_routes.rs
+index 4e23334..b5ffade 100644
+--- a/crates/aionui-system/tests/provider_routes.rs
++++ b/crates/aionui-system/tests/provider_routes.rs
+@@ -45,6 +45,7 @@ fn build_state(db: &aionui_db::Database) -> SystemRouterState {
+         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
+             SqliteFeedbackDiagnosticsRepository::new(db.pool().clone()),
+         )),
++        user_repo: Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone())),
+     }
+ }
+ 
+@@ -162,9 +163,9 @@ async fn list_providers_empty() {
+ }
+ 
+ #[tokio::test]
+-async fn list_providers_returns_plaintext_api_key() {
++async fn list_providers_masks_api_key_for_non_admin() {
+     let (_app, db) = setup().await;
+-    create_one(&db).await;
++    let (_, id) = create_one(&db).await;
+ 
+     let app2 = system_routes(build_state(&db));
+     let resp = app2.oneshot(get_request("/api/providers")).await.unwrap();
+@@ -174,10 +175,10 @@ async fn list_providers_returns_plaintext_api_key() {
+     let providers = json["data"].as_array().unwrap();
+     assert_eq!(providers.len(), 1);
+ 
+-    let api_key = providers[0]["api_key"].as_str().unwrap();
+-    // Pre-launch: api_key is returned plaintext on the wire (encrypted at rest).
+-    assert_eq!(api_key, "sk-ant-api03-test1234");
+-    assert!(!api_key.contains("***"));
++    // A non-admin requester may use the key but never read it. Plaintext for
++    // the admin identity is covered by `admin_routes.rs`.
++    assert_eq!(providers[0]["id"], id);
++    assert_eq!(providers[0]["api_key"], "********");
+ }
+ 
+ // ===========================================================================
+@@ -201,7 +202,9 @@ async fn create_provider_success() {
+     assert_eq!(data["platform"], "anthropic");
+     assert_eq!(data["name"], "Anthropic");
+     assert_eq!(data["base_url"], "https://api.anthropic.com");
+-    assert_eq!(data["api_key"], "sk-ant-api03-test1234");
++    // The creator is not the admin identity, so the key it just stored is
++    // echoed back masked (see `admin_routes.rs` for the plaintext path).
++    assert_eq!(data["api_key"], "********");
+     assert!(data["enabled"].as_bool().unwrap());
+     assert!(data["models"].as_array().unwrap().is_empty());
+     assert!(data["created_at"].as_i64().unwrap() > 0);
+@@ -225,7 +228,7 @@ async fn create_provider_with_supplied_id() {
+     let json = body_json(resp).await;
+     let data = &json["data"];
+     assert_eq!(data["id"], "caller-id-123");
+-    assert_eq!(data["api_key"], "sk-test");
++    assert_eq!(data["api_key"], "********");
+     assert_eq!(data["model_enabled"]["gpt-4"], true);
+     assert_eq!(data["model_enabled"]["gpt-3.5"], false);
+ }
+@@ -460,7 +463,7 @@ async fn update_provider_name() {
+ }
+ 
+ #[tokio::test]
+-async fn update_provider_api_key_returns_plaintext() {
++async fn update_provider_api_key_stays_masked_for_non_admin() {
+     let (_app, db) = setup().await;
+     let (_, id) = create_one(&db).await;
+ 
+@@ -476,8 +479,7 @@ async fn update_provider_api_key_returns_plaintext() {
+ 
+     assert_eq!(resp.status(), StatusCode::OK);
+     let json = body_json(resp).await;
+-    let api_key = json["data"]["api_key"].as_str().unwrap();
+-    assert_eq!(api_key, "new-key-abcdefgh");
++    assert_eq!(json["data"]["api_key"], "********");
+ }
+ 
+ #[tokio::test]
+diff --git a/crates/aionui-system/tests/settings_routes.rs b/crates/aionui-system/tests/settings_routes.rs
+index 49a4b3d..a981555 100644
+--- a/crates/aionui-system/tests/settings_routes.rs
++++ b/crates/aionui-system/tests/settings_routes.rs
+@@ -44,6 +44,7 @@ fn build_state(db: &aionui_db::Database) -> SystemRouterState {
+         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
+             SqliteFeedbackDiagnosticsRepository::new(db.pool().clone()),
+         )),
++        user_repo: Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone())),
+     }
+ }
+ 
+diff --git a/crates/aionui-system/tests/system_info_routes.rs b/crates/aionui-system/tests/system_info_routes.rs
+index fb3f525..8df78f5 100644
+--- a/crates/aionui-system/tests/system_info_routes.rs
++++ b/crates/aionui-system/tests/system_info_routes.rs
+@@ -46,6 +46,7 @@ fn build_state(db: &aionui_db::Database, version_check_service: VersionCheckServ
+         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
+             SqliteFeedbackDiagnosticsRepository::new(db.pool().clone()),
+         )),
++        user_repo: Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone())),
+     }
+ }
+ 

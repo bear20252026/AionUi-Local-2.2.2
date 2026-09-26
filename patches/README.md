@@ -3,37 +3,48 @@
 CI（`../.github/workflows/build-*.yml`）**直接构建仓库内的 `AionUi/`、`AionCore/` 源码树**，本目录只是源码树相对上游 tag 的 diff 存档。改动源码树后必须同步重导出补丁：
 
 ```bash
-git -C AionUi   diff > patches/aionui-v2.2.2-multiuser.patch     # （按实际改动文件选择）
-git -C AionCore diff > patches/aioncore-v0.2.2-no-login.patch
+# 上游 clone（../..//AionUi、../../AionCore）现保持"tag + 全部补丁已应用"的镜像态，
+# 重导出 = 直接 git diff：
+git -C ../../AionCore diff > patches/aioncore-v0.2.2-no-login.patch    # 仅当 no-login 3 文件有变
+git -C ../../AionCore diff -- crates/aionui-api-types crates/aionui-app crates/aionui-system > patches/aioncore-v0.2.2-admin-api.patch
+git -C ../../AionUi   diff > patches/aionui-v2.2.2-multiuser.patch
 ```
+
+> 若上游 clone 不是镜像态（`git -C ../../AionUi status` 不显示补丁改动），把 monorepo 源码树里
+> 的差异文件拷入 clone 工作区后再 diff。拷入的文本文件先 `sed -i 's/\r$//'` 转 LF。
 
 ## 补丁清单
 
 | 文件 | 上游基线 | 内容 | 用途 |
 |------|----------|------|------|
 | `aioncore-v0.2.2-no-login.patch` | iOfficeAI/AionCore v0.2.2 | provider `find_by_model` 回退（3 个文件）：trait 默认方法 + sqlite 实现（`WHERE enabled=1 AND user_id=?`，**严格限请求者本人**）+ aionrs 工厂回退 | 桌面 + 网页，必打 |
-| `aionui-v2.2.2-multiuser.patch` | iOfficeAI/AionUi v2.2.2 | ① `web-host/src/backend-launcher.ts`：`--local` 硬编码改为 `AIONUI_MULTIUSER` 环境变量开关（默认关 = 上游单用户）；② 浏览器端 CSRF 双提交补齐（上游 M6 拆了前端 CSRF、后端 webui 模式却仍强制校验）：`httpBridge` 读 `aionui-csrf-token` cookie 并给状态变更请求附 `x-csrf-token`（含缺 cookie 时的预热 GET），`sessionRefresh`/`configService`/`AuthContext` 登出/文件上传/语音转写同步附头，附回归测试 | 网页版多用户 |
-| `aionui-v2.2.2-auth-bypass.patch` | iOfficeAI/AionUi v2.2.2 | `AuthContext.tsx` 硬编码 `isDesktopRuntime = true`（任何运行时不跳 /login） | **仅**"网页免登录"部署；多用户部署**禁用**（进了不了登录页），桌面版打不打行为都一样 |
+| `aioncore-v0.2.2-admin-api.patch` | 同上（叠打在 no-login 之上） | Web 管理控制台后端（12 个文件）：`aionui-system/routes.rs` admin 用户/Provider 管理 API、`aionui-api-types`（auth.rs/lib.rs）类型、`aionui-app/router/state.rs` 装配、`tests/admin_routes.rs`（新增）及 8 个既有路由测试补 user repo 夹具 | 网页版多用户（管理控制台） |
+| `aionui-v2.2.2-multiuser.patch` | iOfficeAI/AionUi v2.2.2 | ① `web-host/backend-launcher.ts`：`--local` 硬编码改 `AIONUI_MULTIUSER` 开关（默认关 = 上游单用户）；② CSRF 双提交补齐（httpBridge 读 `aionui-csrf-token` cookie 给状态变更请求附 `x-csrf-token`，sessionRefresh/configService/AuthContext/FileService/SpeechToText 同步附头，含回归测试）；③ 浏览器登录门 + login 页多用户引导；④ Web 管理控制台前端：`renderer/admin.html/admin.tsx`、`pages/admin/`（AdminApp 等）、`/admin` 直出（web-host static-server + electron.vite 入口）、静态资源确定性缓存头；⑤ 控制台 13 语言 i18n（`locales/*/admin.json` + index.ts 注册 + i18n-keys.d.ts）；⑥ 切换账号清空会话列表防串号；⑦ 多用户首启密码失败告警（scripts/webui.ts、resetpass.ts） | 网页版多用户，必打 |
+| `aionui-v2.2.2-auth-bypass.patch` | iOfficeAI/AionUi v2.2.2 | `AuthContext.tsx` 硬编码 `isDesktopRuntime = true`（任何运行时不跳 /login） | **仅**"网页免登录"部署；与 multiuser 补丁**互斥**（都改 AuthContext.tsx），多用户部署**禁用** |
 
 行为速查：
 
-- 桌面 exe：`window.electronAPI` 恒在 → 永不登录（auth-bypass 可打可不打）。
+- 桌面 exe：`window.electronAPI` 恒在 → 永不登录（auth-bypass 可打可不打；admin API 在桌面端无入口，无副作用）。
 - 网页 tarball：不打 auth-bypass + 不设 `AIONUI_MULTIUSER` → 登录门 + 单用户共享数据（上游原生行为）。
-- 网页 tarball：不打 auth-bypass + `AIONUI_MULTIUSER=1` → 登录门 + 按用户隔离数据（多用户模式）。
+- 网页 tarball：不打 auth-bypass + 打 admin-api/admin 控制台补丁 + `AIONUI_MULTIUSER=1` → 登录门 + 按用户隔离数据 + `/admin` 管理控制台（多用户模式，当前生产形态）。
 
 ## 升级步骤（上游出新版时）
 
 ```bash
+# 0. 重放环境务必关闭行尾转换（CRLF 工作区会让 LF 补丁 "patch does not apply"）：
+git config core.autocrlf false && git checkout -f -- . && git clean -fd
+
 # 1. 同步上游到 AionUi/ 与 AionCore/（或重新 clone 对应新 tag）
-# 2. 打补丁
-cd AionCore && git apply ../patches/aioncore-<新版本>-no-login.patch   # 冲突时按 hunk 手工合
-cd AionUi   && git apply ../patches/aionui-<新版本>-multiuser.patch    # 多用户部署；免登录部署改用 auth-bypass
+# 2. 打补丁（顺序固定）
+cd AionCore && git apply ../patches/aioncore-v0.2.2-no-login.patch
+cd AionCore && git apply ../patches/aioncore-v0.2.2-admin-api.patch   # 多用户部署；纯桌面免登录可跳过
+cd AionUi   && git apply ../patches/aionui-v2.2.2-multiuser.patch     # 多用户部署；免登录部署改用 auth-bypass（互斥）
 
 # 3. 校验补丁能干净应用（对干净基线）
 git apply --check ../patches/xxx.patch
 
 # 4. 后端类型检查（改了 rust）
-cd AionCore && cargo check -p aionui-db -p aionui-ai-agent
+cd AionCore && cargo check -p aionui-db -p aionui-ai-agent -p aionui-system
 
 # 5. 提交并推送 → GitHub Actions 自动产出：
 #    - Windows 安装包 (build-win-installer.yml)
@@ -48,6 +59,11 @@ cd AionCore && cargo check -p aionui-db -p aionui-ai-agent
 
 ## 注意
 
-- 上游若改动了补丁所在函数（尤其 `aionrs.rs` 的 provider 查找段落），`git apply` 会报冲突——按补丁语义（"find_by_id 失败则回退到请求者自己名下按模型名匹配的已启用 provider"）手工合并。
+- 上游若改动了补丁所在函数（尤其 `aionrs.rs` 的 provider 查找段落、`routes.rs`、`httpBridge.ts`），`git apply` 会报冲突——按补丁语义手工合并：
+  - no-login："find_by_id 失败则回退到请求者自己名下按模型名匹配的已启用 provider"；
+  - admin-api：`/api/admin/*` 仅管理员（JWT identity_mode=webui）可达；
+  - multiuser：`AIONUI_MULTIUSER` 开关 + CSRF 双提交 + `/admin` 直出。
 - 重放后**同步重导出本目录补丁**，保持与源码树一致。
 - 导出补丁务必用 bash 重定向（`git diff > x.patch`，UTF-8 + LF）。PowerShell 的 `>` 会产出 UTF-16/CRLF，`git apply` 直接报 "No valid patches in input"（auth-bypass 补丁曾中招，已修复）。
+- 补丁为 LF 行尾、不含二进制：monorepo 源码树相对上游还**缺少** `resources/*.gif`（16 个 README 演示图，约 300MB，仓库瘦身删除，不影响构建）与 `resources/windows/support/_sentry-dsn.generated.nsh`（构建生成物，上游 .gitignore 忽略）——重放时无需补回。
+- 补丁校验/应用统一用 `git apply`；若目标工作区为 CRLF（Windows 默认 autocrlf=true），先按「升级步骤 0」处理。
