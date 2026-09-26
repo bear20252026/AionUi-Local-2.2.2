@@ -116,18 +116,21 @@ export function AdminApp() {
   }, [t]);
 
   // Gate: who am I, and may I use the console at all?
+  // `/api/system/current-user` is the identity probe that works in every mode:
+  // it answers from the local default account when there is no login, and from
+  // the JWT session (401 without one) in multi-user WebUI mode.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const resp = await fetch('/api/auth/user');
+        const resp = await fetch('/api/system/current-user');
         if (!resp.ok) {
           if (!cancelled) setGate('anonymous');
           return;
         }
-        const body = (await resp.json()) as { user?: { id: string; username: string } };
+        const body = (await resp.json()) as { data?: { id: string; username: string } };
         if (cancelled) return;
-        if (body.user) setCurrentUser(body.user);
+        if (body.data) setCurrentUser(body.data);
         const ok = await loadUsers();
         if (!cancelled && ok) setGate('ready');
       } catch {
