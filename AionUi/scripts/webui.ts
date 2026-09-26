@@ -279,6 +279,24 @@ async function main(): Promise<void> {
             console.log(`Initial admin password: ${initialPassword}`);
             console.log('(change them after first login)');
           }
+        } else {
+          // Do NOT fail silently: without this line a fresh multi-user install
+          // looks like it seeded a password and the operator is locked out.
+          // The reset endpoint is local-mode only, so multi-user first boot
+          // has to seed the password before AIONUI_MULTIUSER is turned on.
+          const body = await resetRes.text().catch(() => '');
+          console.warn('');
+          console.warn(
+            `[webui] initial admin password NOT seeded (POST /api/webui/reset-password -> ${resetRes.status})`
+          );
+          if (process.env.AIONUI_MULTIUSER) {
+            console.warn('[webui] AIONUI_MULTIUSER is set: this endpoint is refused in multi-user mode by design.');
+            console.warn(
+              '[webui] Start once WITHOUT AIONUI_MULTIUSER to generate the password, then enable it — or run `bun run resetpass` in local mode.'
+            );
+          } else if (body) {
+            console.warn(`[webui] ${body}`);
+          }
         }
       } else {
         // Credentials already exist; just remind the user what username to use.

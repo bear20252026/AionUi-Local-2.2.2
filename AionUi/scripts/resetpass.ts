@@ -134,9 +134,30 @@ async function detectRunningWebUI(port: number): Promise<boolean> {
 }
 
 async function resetPasswordVia(url: string): Promise<string> {
-  const res = await fetch(url, { method: 'POST' });
+  // CSRF double-submit: the middleware issues `aionui-csrf-token` on any
+  // wrapped response and requires the same value back in `x-csrf-token`.
+  // Node's fetch has no cookie jar, so read Set-Cookie and echo it manually.
+  // Local mode runs without the CSRF layer — skip the dance entirely.
+  const origin = new URL(url).origin;
+  const headers: Record<string, string> = {};
+  const statusRes = await fetch(`${origin}/api/auth/status`);
+  const setCookies = statusRes.headers.getSetCookie?.() ?? [];
+  const cookie = setCookies.map((c) => c.split(';')[0]).join('; ');
+  const token = /(?:^|;\s*)aionui-csrf-token=([^;]+)/.exec(cookie)?.[1];
+  if (token) {
+    headers['x-csrf-token'] = token;
+    headers.cookie = cookie;
+  }
+
+  const res = await fetch(url, { method: 'POST', headers });
   if (!res.ok) {
     const body = await res.text();
+    if (res.status === 403) {
+      throw new Error(
+        `reset-password refused (403): ${body || 'Forbidden'} — the endpoint is local-mode only. ` +
+          'Start the server once WITHOUT AIONUI_MULTIUSER to set the admin password, then enable it.'
+      );
+    }
     throw new Error(`reset-password failed (${res.status}): ${body}`);
   }
   const payload = (await res.json()) as { data?: { new_password?: string } };
