@@ -75,6 +75,22 @@ describe('static-server', () => {
     expect(await r.text()).toContain('hi');
   });
 
+  it('cache headers: HTML no-cache, hashed assets immutable', async () => {
+    const backend = await startMockBackend((_req, res) => res.end('nope'));
+    stopBackend = backend.close;
+    handle = await startStaticServer({ staticDir, backendPort: backend.port, port: 0 });
+
+    const html = await fetch(`${handle.localUrl}/`);
+    expect(html.headers.get('cache-control')).toBe('no-cache');
+
+    // SPA fallback serves index.html too — must carry the same header.
+    const spa = await fetch(`${handle.localUrl}/chat/123`);
+    expect(spa.headers.get('cache-control')).toBe('no-cache');
+
+    const asset = await fetch(`${handle.localUrl}/assets/main.js`);
+    expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+  });
+
   it('/api/* reverse-proxies to backend', async () => {
     const backend = await startMockBackend((req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });

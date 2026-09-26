@@ -192,6 +192,19 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
       await serveHandler(req, res, {
         public: opts.staticDir,
         rewrites: [{ source: '**', destination: '/index.html' }],
+        // Deploy correctness: HTML always revalidates (a new build is picked
+        // up on the next load, no hard-refresh needed), while content-hashed
+        // build assets are immutable and safe to cache for a year.
+        headers: [
+          {
+            source: '**/*.html',
+            headers: [{ key: 'Cache-Control', value: 'no-cache' }],
+          },
+          {
+            source: '**/assets/**',
+            headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+          },
+        ],
       });
     } catch (err) {
       if (!res.headersSent) {
