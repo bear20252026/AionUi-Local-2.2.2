@@ -26,10 +26,12 @@ afterEach(() => {
 });
 
 // PreviewPanel pulls in a large dependency graph; under the full concurrent
-// suite the first cold import's transform/resolve can exceed the default 10s
-// timeout (flaky), even though it resolves in a few seconds in isolation. Give
-// these import-bound assertions extra headroom so they don't flake.
-const IMPORT_TIMEOUT_MS = 30000;
+// suite the first cold import's transform/resolve queues behind hundreds of
+// files and can blow past both the default budget and a 30s raise (observed
+// flaking at 30s on a loaded machine; isolated runs take ~15s). Give these
+// import-bound assertions generous headroom so they don't flake — assertions
+// themselves are unchanged and run instantly once the module is cached.
+const IMPORT_TIMEOUT_MS = 120000;
 
 describe('PreviewPanel', () => {
   it(

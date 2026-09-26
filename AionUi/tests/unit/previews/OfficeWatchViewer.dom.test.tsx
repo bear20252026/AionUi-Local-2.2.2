@@ -17,7 +17,13 @@
  * is recorded in N4c-final.md Deviations.
  */
 
-import { afterEach, beforeEach, describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+
+// Cold-import shape tests: under the full concurrent suite the first import
+// queues behind the transform of hundreds of files and has been observed
+// exceeding 30s (isolated ~15s). Assertions are unchanged — once the module
+// is cached the rest of this file runs instantly.
+vi.setConfig({ testTimeout: 120000, hookTimeout: 120000 });
 
 describe('OfficeWatchViewer module shape', () => {
   it('module loads and exposes a default export', async () => {
