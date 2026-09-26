@@ -1,0 +1,80 @@
+{
+  "brand": {
+    "mark": "AionUi",
+    "sub": "کنسول مدیریت"
+  },
+  "topbar": {
+    "backToApp": "بازگشت به برنامه",
+    "logout": "خروج از حساب",
+    "defaultUser": "مدیر"
+  },
+  "gate": {
+    "loading": "در حال بارگذاری کنسول مدیریت…",
+    "anonymous": "برای دسترسی به کنسول مدیریت وارد شوید.",
+    "anonymousAction": "رفتن به ورود",
+    "forbidden": "این حساب مدیر نیست.",
+    "forbiddenAction": "بازگشت به برنامه"
+  },
+  "notice": {
+    "usersLoad": "بارگذاری فهرست کاربران ناموفق بود. کمی بعد دوباره تلاش کنید.",
+    "providersLoad": "بارگذاری ارائه‌دهندگان مدل ناموفق بود.",
+    "saveFailed": "ذخیره ناموفق بود — فیلدها را بررسی کنید.",
+    "deleteFailed": "حذف ناموفق بود.",
+    "forbidden": "دسترسی مدیر لازم است"
+  },
+  "users": {
+    "title": "کاربران",
+    "refresh": "به‌روزرسانی",
+    "account": "حساب",
+    "status": "وضعیت",
+    "lastLogin": "آخرین ورود",
+    "adminTag": "مدیر",
+    "active": "فعال",
+    "disabled": "غیرفعال",
+    "empty": "بدون کاربر"
+  },
+  "providers": {
+    "title": "ارائه‌دهندگان مدل",
+    "titleFor": "ارائه‌دهندگان مدل · {{name}}",
+    "create": "جدید",
+    "refresh": "به‌روزرسانی",
+    "empty": "این کاربر هنوز ارائه‌دهنده مدلی ندارد",
+    "emptyNoUser": "ابتدا از سمت چپ یک کاربر انتخاب کنید",
+    "name": "نام",
+    "platform": "پلتفرم",
+    "baseUrl": "Base URL",
+    "apiKey": "کلید API",
+    "enabled": "فعال",
+    "yes": "بله",
+    "no": "خیر",
+    "edit": "ویرایش",
+    "delete": "حذف"
+  },
+  "modal": {
+    "createTitle": "ارائه‌دهنده مدل جدید",
+    "editTitle": "ویرایش ارائه‌دهنده مدل",
+    "okCreate": "ایجاد",
+    "okSave": "ذخیره",
+    "cancel": "انصراف",
+    "owner": "مالک: {{name}}",
+    "platformPlaceholder": "openai",
+    "platformRequired": "یک پلتفرم انتخاب کنید",
+    "namePlaceholder": "OpenAI",
+    "nameRequired": "نام را وارد کنید",
+    "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "baseUrlRequired": "Base URL را وارد کنید",
+    "apiKeyPlaceholder": "sk-…",
+    "apiKeyRequired": "کلید API را وارد کنید",
+    "apiKeyHint": "فقط مدیران می‌توانند آن را بخوانند؛ دیگران ماسک می‌بینند."
+  },
+  "deleteDialog": {
+    "title": "حذف ارائه‌دهنده مدل",
+    "content": "«{{name}}» حذف شود؟ این پیکربندی بلافاصله برای این کاربر از کار می‌افتد.",
+    "ok": "حذف"
+  },
+  "message": {
+    "created": "ارائه‌دهنده مدل ایجاد شد",
+    "updated": "ارائه‌دهنده مدل به‌روزرسانی شد",
+    "deleted": "حذف شد"
+  }
+}

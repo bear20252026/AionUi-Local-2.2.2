@@ -1,0 +1,80 @@
+{
+  "brand": {
+    "mark": "AionUi",
+    "sub": "관리 콘솔"
+  },
+  "topbar": {
+    "backToApp": "앱으로 돌아가기",
+    "logout": "로그아웃",
+    "defaultUser": "관리자"
+  },
+  "gate": {
+    "loading": "관리 콘솔을 불러오는 중…",
+    "anonymous": "관리 콘솔에 접근하려면 로그인하세요.",
+    "anonymousAction": "로그인으로 이동",
+    "forbidden": "이 계정은 관리자가 아닙니다.",
+    "forbiddenAction": "앱으로 돌아가기"
+  },
+  "notice": {
+    "usersLoad": "사용자 목록을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
+    "providersLoad": "모델 프로바이더를 불러오지 못했습니다.",
+    "saveFailed": "저장에 실패했습니다 — 입력 내용을 확인하세요.",
+    "deleteFailed": "삭제에 실패했습니다.",
+    "forbidden": "관리자 권한이 필요합니다"
+  },
+  "users": {
+    "title": "사용자",
+    "refresh": "새로고침",
+    "account": "계정",
+    "status": "상태",
+    "lastLogin": "최근 로그인",
+    "adminTag": "관리자",
+    "active": "활성",
+    "disabled": "비활성",
+    "empty": "사용자가 없습니다"
+  },
+  "providers": {
+    "title": "모델 프로바이더",
+    "titleFor": "모델 프로바이더 · {{name}}",
+    "create": "새로 만들기",
+    "refresh": "새로고침",
+    "empty": "이 사용자에게는 아직 모델 프로바이더가 없습니다",
+    "emptyNoUser": "왼쪽에서 사용자를 선택하세요",
+    "name": "이름",
+    "platform": "플랫폼",
+    "baseUrl": "Base URL",
+    "apiKey": "API 키",
+    "enabled": "사용",
+    "yes": "예",
+    "no": "아니오",
+    "edit": "편집",
+    "delete": "삭제"
+  },
+  "modal": {
+    "createTitle": "모델 프로바이더 새로 만들기",
+    "editTitle": "모델 프로바이더 편집",
+    "okCreate": "만들기",
+    "okSave": "저장",
+    "cancel": "취소",
+    "owner": "소유자: {{name}}",
+    "platformPlaceholder": "openai",
+    "platformRequired": "플랫폼을 선택하세요",
+    "namePlaceholder": "OpenAI",
+    "nameRequired": "이름을 입력하세요",
+    "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "baseUrlRequired": "Base URL을 입력하세요",
+    "apiKeyPlaceholder": "sk-…",
+    "apiKeyRequired": "API 키를 입력하세요",
+    "apiKeyHint": "관리자만 읽을 수 있으며 다른 사용자에게는 마스크가 표시됩니다."
+  },
+  "deleteDialog": {
+    "title": "모델 프로바이더 삭제",
+    "content": "\"{{name}}\"을(를) 삭제할까요? 이 사용자의 설정이 즉시 중단됩니다.",
+    "ok": "삭제"
+  },
+  "message": {
+    "created": "모델 프로바이더를 만들었습니다",
+    "updated": "모델 프로바이더를 업데이트했습니다",
+    "deleted": "삭제했습니다"
+  }
+}

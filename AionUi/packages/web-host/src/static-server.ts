@@ -1,8 +1,8 @@
 /**
  * WebUI static server.
  *
- * Serves out/renderer/ as the SPA and reverse-proxies /api/*, /ws, /api/stt/stream,
- * /login and /logout to aioncore. All auth goes to backend's aionui-auth crate;
+ * Serves out/renderer/ as the SPA (plus the /admin console entry) and
+ * reverse-proxies /api/*, /ws, /api/stt/stream, /login and /logout to aioncore. All auth goes to backend's aionui-auth crate;
  * /login and /logout are aionui-auth's top-level paths, the rest live under
  * /api/auth/*. /ws and /api/stt/stream are WebSocket/stream upgrades spliced at
  * TCP level; /api/stt/stream is the STT streaming endpoint.
@@ -11,8 +11,10 @@
  */
 
 import http, { type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import net, { type Socket } from 'node:net';
+import path from 'node:path';
 import serveHandler from 'serve-handler';
 
 export type StaticServerOptions = {
@@ -188,16 +190,31 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
         return;
       }
 
+      // The admin console's clean URL. serve-handler applies rewrites in
+      // sequence, so a dedicated rule gets overridden by the SPA catch-all
+      // below; and rewriting to /admin.html would trip cleanUrls' .html →
+      // extensionless redirect into a loop. Serve the entry file directly,
+      // with the same no-cache rule every other HTML response gets.
+      const requestPath = req.url.split('?')[0];
+      if (requestPath === '/admin' || requestPath === '/admin/') {
+        const adminHtml = await readFile(path.join(opts.staticDir, 'admin.html')).catch((): Buffer | null => null);
+        if (adminHtml) {
+          res.writeHead(200, {
+            'content-type': 'text/html; charset=utf-8',
+            'cache-control': 'no-cache',
+            'content-length': adminHtml.byteLength,
+          });
+          res.end(req.method === 'HEAD' ? undefined : adminHtml);
+          return;
+        }
+        // No admin entry in this bundle — fall through to the SPA fallback.
+      }
+
       // static files + SPA fallback
       await serveHandler(req, res, {
         public: opts.staticDir,
-        // `/admin` is the admin console's clean URL; everything else falls
-        // back to the main SPA shell.
-        rewrites: [
-          { source: '/admin', destination: '/admin.html' },
-          { source: '/admin/', destination: '/admin.html' },
-          { source: '**', destination: '/index.html' },
-        ],
+        // Everything not served as a real file falls back to the main SPA shell.
+        rewrites: [{ source: '**', destination: '/index.html' }],
         // Deploy correctness: HTML always revalidates (a new build is picked
         // up on the next load, no hard-refresh needed), while content-hashed
         // build assets are immutable and safe to cache for a year.

@@ -1,0 +1,80 @@
+{
+  "brand": {
+    "mark": "AionUi",
+    "sub": "Console d'administration"
+  },
+  "topbar": {
+    "backToApp": "Retour à l'application",
+    "logout": "Se déconnecter",
+    "defaultUser": "Administrateur"
+  },
+  "gate": {
+    "loading": "Chargement de la console d'administration…",
+    "anonymous": "Connectez-vous pour accéder à la console d'administration.",
+    "anonymousAction": "Aller à la connexion",
+    "forbidden": "Ce compte n'est pas administrateur.",
+    "forbiddenAction": "Retour à l'application"
+  },
+  "notice": {
+    "usersLoad": "Impossible de charger la liste des utilisateurs. Réessayez dans un instant.",
+    "providersLoad": "Impossible de charger les fournisseurs de modèles.",
+    "saveFailed": "Échec de l'enregistrement — vérifiez les champs.",
+    "deleteFailed": "Échec de la suppression.",
+    "forbidden": "Accès administrateur requis"
+  },
+  "users": {
+    "title": "Utilisateurs",
+    "refresh": "Actualiser",
+    "account": "Compte",
+    "status": "Statut",
+    "lastLogin": "Dernière connexion",
+    "adminTag": "Administrateur",
+    "active": "Actif",
+    "disabled": "Désactivé",
+    "empty": "Aucun utilisateur"
+  },
+  "providers": {
+    "title": "Fournisseurs de modèles",
+    "titleFor": "Fournisseurs de modèles · {{name}}",
+    "create": "Nouveau",
+    "refresh": "Actualiser",
+    "empty": "Cet utilisateur n'a pas encore de fournisseur de modèles",
+    "emptyNoUser": "Sélectionnez d'abord un utilisateur à gauche",
+    "name": "Nom",
+    "platform": "Plateforme",
+    "baseUrl": "Base URL",
+    "apiKey": "Clé API",
+    "enabled": "Activé",
+    "yes": "Oui",
+    "no": "Non",
+    "edit": "Modifier",
+    "delete": "Supprimer"
+  },
+  "modal": {
+    "createTitle": "Nouveau fournisseur de modèles",
+    "editTitle": "Modifier le fournisseur de modèles",
+    "okCreate": "Créer",
+    "okSave": "Enregistrer",
+    "cancel": "Annuler",
+    "owner": "Propriétaire : {{name}}",
+    "platformPlaceholder": "openai",
+    "platformRequired": "Sélectionnez une plateforme",
+    "namePlaceholder": "OpenAI",
+    "nameRequired": "Saisissez un nom",
+    "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "baseUrlRequired": "Saisissez une Base URL",
+    "apiKeyPlaceholder": "sk-…",
+    "apiKeyRequired": "Saisissez une clé API",
+    "apiKeyHint": "Seuls les administrateurs peuvent la lire ; les autres voient un masque."
+  },
+  "deleteDialog": {
+    "title": "Supprimer le fournisseur de modèles",
+    "content": "Supprimer « {{name}} » ? La configuration cesserait immédiatement de fonctionner pour cet utilisateur.",
+    "ok": "Supprimer"
+  },
+  "message": {
+    "created": "Fournisseur de modèles créé",
+    "updated": "Fournisseur de modèles mis à jour",
+    "deleted": "Supprimé"
+  }
+}

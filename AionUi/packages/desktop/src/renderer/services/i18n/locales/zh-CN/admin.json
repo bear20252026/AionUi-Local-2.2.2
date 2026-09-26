@@ -1,0 +1,80 @@
+{
+  "brand": {
+    "mark": "AionUi",
+    "sub": "管理控制台"
+  },
+  "topbar": {
+    "backToApp": "返回应用",
+    "logout": "退出登录",
+    "defaultUser": "管理员"
+  },
+  "gate": {
+    "loading": "正在加载管理控制台…",
+    "anonymous": "需要先登录才能访问管理控制台。",
+    "anonymousAction": "前往登录",
+    "forbidden": "当前账号不是管理员。",
+    "forbiddenAction": "返回应用"
+  },
+  "notice": {
+    "usersLoad": "加载用户列表失败，请稍后重试。",
+    "providersLoad": "加载模型服务失败。",
+    "saveFailed": "保存失败，请检查填写内容。",
+    "deleteFailed": "删除失败。",
+    "forbidden": "需要管理员权限"
+  },
+  "users": {
+    "title": "用户",
+    "refresh": "刷新",
+    "account": "账号",
+    "status": "状态",
+    "lastLogin": "最近登录",
+    "adminTag": "管理员",
+    "active": "启用",
+    "disabled": "停用",
+    "empty": "暂无用户"
+  },
+  "providers": {
+    "title": "模型服务",
+    "titleFor": "模型服务 · {{name}}",
+    "create": "新建",
+    "refresh": "刷新",
+    "empty": "该用户还没有配置模型服务",
+    "emptyNoUser": "请先在左侧选择用户",
+    "name": "名称",
+    "platform": "平台",
+    "baseUrl": "Base URL",
+    "apiKey": "API Key",
+    "enabled": "启用",
+    "yes": "是",
+    "no": "否",
+    "edit": "编辑",
+    "delete": "删除"
+  },
+  "modal": {
+    "createTitle": "新建模型服务",
+    "editTitle": "编辑模型服务",
+    "okCreate": "创建",
+    "okSave": "保存",
+    "cancel": "取消",
+    "owner": "服务归属：{{name}}",
+    "platformPlaceholder": "openai",
+    "platformRequired": "请选择平台",
+    "namePlaceholder": "OpenAI",
+    "nameRequired": "请输入名称",
+    "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "baseUrlRequired": "请输入 Base URL",
+    "apiKeyPlaceholder": "sk-…",
+    "apiKeyRequired": "请输入 API Key",
+    "apiKeyHint": "仅管理员可读；其他用户只会看到掩码。"
+  },
+  "deleteDialog": {
+    "title": "删除模型服务",
+    "content": "确定删除「{{name}}」吗？该用户的此配置将立即失效。",
+    "ok": "删除"
+  },
+  "message": {
+    "created": "已为该用户创建模型服务",
+    "updated": "模型服务已更新",
+    "deleted": "已删除"
+  }
+}

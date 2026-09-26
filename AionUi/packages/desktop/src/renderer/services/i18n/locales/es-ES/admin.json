@@ -1,0 +1,80 @@
+{
+  "brand": {
+    "mark": "AionUi",
+    "sub": "Consola de administración"
+  },
+  "topbar": {
+    "backToApp": "Volver a la aplicación",
+    "logout": "Cerrar sesión",
+    "defaultUser": "Administrador"
+  },
+  "gate": {
+    "loading": "Cargando la consola de administración…",
+    "anonymous": "Inicia sesión para acceder a la consola de administración.",
+    "anonymousAction": "Ir a iniciar sesión",
+    "forbidden": "Esta cuenta no es de administrador.",
+    "forbiddenAction": "Volver a la aplicación"
+  },
+  "notice": {
+    "usersLoad": "No se pudo cargar la lista de usuarios. Inténtalo de nuevo en un momento.",
+    "providersLoad": "No se pudieron cargar los proveedores de modelos.",
+    "saveFailed": "Error al guardar — revisa los campos.",
+    "deleteFailed": "Error al eliminar.",
+    "forbidden": "Se requiere acceso de administrador"
+  },
+  "users": {
+    "title": "Usuarios",
+    "refresh": "Actualizar",
+    "account": "Cuenta",
+    "status": "Estado",
+    "lastLogin": "Último inicio de sesión",
+    "adminTag": "Administrador",
+    "active": "Activo",
+    "disabled": "Inactivo",
+    "empty": "No hay usuarios"
+  },
+  "providers": {
+    "title": "Proveedores de modelos",
+    "titleFor": "Proveedores de modelos · {{name}}",
+    "create": "Nuevo",
+    "refresh": "Actualizar",
+    "empty": "Este usuario aún no tiene proveedores de modelos",
+    "emptyNoUser": "Selecciona un usuario a la izquierda",
+    "name": "Nombre",
+    "platform": "Plataforma",
+    "baseUrl": "Base URL",
+    "apiKey": "Clave API",
+    "enabled": "Habilitado",
+    "yes": "Sí",
+    "no": "No",
+    "edit": "Editar",
+    "delete": "Eliminar"
+  },
+  "modal": {
+    "createTitle": "Nuevo proveedor de modelos",
+    "editTitle": "Editar proveedor de modelos",
+    "okCreate": "Crear",
+    "okSave": "Guardar",
+    "cancel": "Cancelar",
+    "owner": "Propietario: {{name}}",
+    "platformPlaceholder": "openai",
+    "platformRequired": "Selecciona una plataforma",
+    "namePlaceholder": "OpenAI",
+    "nameRequired": "Introduce un nombre",
+    "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "baseUrlRequired": "Introduce una Base URL",
+    "apiKeyPlaceholder": "sk-…",
+    "apiKeyRequired": "Introduce una clave API",
+    "apiKeyHint": "Solo los administradores pueden leerla; el resto ve una máscara."
+  },
+  "deleteDialog": {
+    "title": "Eliminar proveedor de modelos",
+    "content": "¿Eliminar «{{name}}»? La configuración dejará de funcionar para este usuario.",
+    "ok": "Eliminar"
+  },
+  "message": {
+    "created": "Proveedor de modelos creado",
+    "updated": "Proveedor de modelos actualizado",
+    "deleted": "Eliminado"
+  }
+}

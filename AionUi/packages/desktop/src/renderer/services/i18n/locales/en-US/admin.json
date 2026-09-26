@@ -1,0 +1,80 @@
+{
+  "brand": {
+    "mark": "AionUi",
+    "sub": "Admin Console"
+  },
+  "topbar": {
+    "backToApp": "Back to App",
+    "logout": "Sign Out",
+    "defaultUser": "Administrator"
+  },
+  "gate": {
+    "loading": "Loading the admin console…",
+    "anonymous": "Sign in to access the admin console.",
+    "anonymousAction": "Go to Sign In",
+    "forbidden": "This account is not an administrator.",
+    "forbiddenAction": "Back to App"
+  },
+  "notice": {
+    "usersLoad": "Couldn't load the user list. Try again shortly.",
+    "providersLoad": "Couldn't load model providers.",
+    "saveFailed": "Save failed — check the fields.",
+    "deleteFailed": "Delete failed.",
+    "forbidden": "Administrator access required"
+  },
+  "users": {
+    "title": "Users",
+    "refresh": "Refresh",
+    "account": "Account",
+    "status": "Status",
+    "lastLogin": "Last login",
+    "adminTag": "Admin",
+    "active": "Active",
+    "disabled": "Disabled",
+    "empty": "No users"
+  },
+  "providers": {
+    "title": "Model Providers",
+    "titleFor": "Model Providers · {{name}}",
+    "create": "New",
+    "refresh": "Refresh",
+    "empty": "This user has no model providers yet",
+    "emptyNoUser": "Select a user on the left first",
+    "name": "Name",
+    "platform": "Platform",
+    "baseUrl": "Base URL",
+    "apiKey": "API Key",
+    "enabled": "Enabled",
+    "yes": "Yes",
+    "no": "No",
+    "edit": "Edit",
+    "delete": "Delete"
+  },
+  "modal": {
+    "createTitle": "New Model Provider",
+    "editTitle": "Edit Model Provider",
+    "okCreate": "Create",
+    "okSave": "Save",
+    "cancel": "Cancel",
+    "owner": "Owner: {{name}}",
+    "platformPlaceholder": "openai",
+    "platformRequired": "Select a platform",
+    "namePlaceholder": "OpenAI",
+    "nameRequired": "Enter a name",
+    "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "baseUrlRequired": "Enter a base URL",
+    "apiKeyPlaceholder": "sk-…",
+    "apiKeyRequired": "Enter an API key",
+    "apiKeyHint": "Only administrators can read it; everyone else sees a mask."
+  },
+  "deleteDialog": {
+    "title": "Delete Model Provider",
+    "content": "Delete \"{{name}}\"? It stops working for this user immediately.",
+    "ok": "Delete"
+  },
+  "message": {
+    "created": "Model provider created",
+    "updated": "Model provider updated",
+    "deleted": "Deleted"
+  }
+}

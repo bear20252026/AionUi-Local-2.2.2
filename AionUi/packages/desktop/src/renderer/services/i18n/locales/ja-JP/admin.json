@@ -1,0 +1,80 @@
+{
+  "brand": {
+    "mark": "AionUi",
+    "sub": "管理コンソール"
+  },
+  "topbar": {
+    "backToApp": "アプリに戻る",
+    "logout": "ログアウト",
+    "defaultUser": "管理者"
+  },
+  "gate": {
+    "loading": "管理コンソールを読み込んでいます…",
+    "anonymous": "管理コンソールにアクセスするにはサインインしてください。",
+    "anonymousAction": "サインインへ",
+    "forbidden": "このアカウントは管理者ではありません。",
+    "forbiddenAction": "アプリに戻る"
+  },
+  "notice": {
+    "usersLoad": "ユーザー一覧の取得に失敗しました。しばらくしてから再試行してください。",
+    "providersLoad": "モデルプロバイダーの取得に失敗しました。",
+    "saveFailed": "保存に失敗しました — 入力内容を確認してください。",
+    "deleteFailed": "削除に失敗しました。",
+    "forbidden": "管理者権限が必要です"
+  },
+  "users": {
+    "title": "ユーザー",
+    "refresh": "更新",
+    "account": "アカウント",
+    "status": "状態",
+    "lastLogin": "最終ログイン",
+    "adminTag": "管理者",
+    "active": "有効",
+    "disabled": "無効",
+    "empty": "ユーザーがありません"
+  },
+  "providers": {
+    "title": "モデルプロバイダー",
+    "titleFor": "モデルプロバイダー · {{name}}",
+    "create": "新規",
+    "refresh": "更新",
+    "empty": "このユーザーにはまだモデルプロバイダーがありません",
+    "emptyNoUser": "まず左の一覧からユーザーを選択してください",
+    "name": "名前",
+    "platform": "プラットフォーム",
+    "baseUrl": "Base URL",
+    "apiKey": "APIキー",
+    "enabled": "有効",
+    "yes": "はい",
+    "no": "いいえ",
+    "edit": "編集",
+    "delete": "削除"
+  },
+  "modal": {
+    "createTitle": "モデルプロバイダーを新規作成",
+    "editTitle": "モデルプロバイダーを編集",
+    "okCreate": "作成",
+    "okSave": "保存",
+    "cancel": "キャンセル",
+    "owner": "所有者：{{name}}",
+    "platformPlaceholder": "openai",
+    "platformRequired": "プラットフォームを選択してください",
+    "namePlaceholder": "OpenAI",
+    "nameRequired": "名前を入力してください",
+    "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "baseUrlRequired": "Base URL を入力してください",
+    "apiKeyPlaceholder": "sk-…",
+    "apiKeyRequired": "APIキーを入力してください",
+    "apiKeyHint": "読み取れるのは管理者のみです。他ユーザーにはマスクが表示されます。"
+  },
+  "deleteDialog": {
+    "title": "モデルプロバイダーを削除",
+    "content": "「{{name}}」を削除しますか？このユーザーの設定は即時に無効になります。",
+    "ok": "削除"
+  },
+  "message": {
+    "created": "モデルプロバイダーを作成しました",
+    "updated": "モデルプロバイダーを更新しました",
+    "deleted": "削除しました"
+  }
+}

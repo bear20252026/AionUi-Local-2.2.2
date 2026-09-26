@@ -1,0 +1,80 @@
+{
+  "brand": {
+    "mark": "AionUi",
+    "sub": "Yönetim Konsolu"
+  },
+  "topbar": {
+    "backToApp": "Uygulamaya Dön",
+    "logout": "Çıkış Yap",
+    "defaultUser": "Yönetici"
+  },
+  "gate": {
+    "loading": "Yönetim konsolu yükleniyor…",
+    "anonymous": "Yönetim konsoluna erişmek için oturum açın.",
+    "anonymousAction": "Oturum Aç'a Git",
+    "forbidden": "Bu hesap yönetici değil.",
+    "forbiddenAction": "Uygulamaya Dön"
+  },
+  "notice": {
+    "usersLoad": "Kullanıcı listesi yüklenemedi. Biraz sonra tekrar deneyin.",
+    "providersLoad": "Model sağlayıcıları yüklenemedi.",
+    "saveFailed": "Kaydedilemedi — alanları kontrol edin.",
+    "deleteFailed": "Silinemedi.",
+    "forbidden": "Yönetici erişimi gerekli"
+  },
+  "users": {
+    "title": "Kullanıcılar",
+    "refresh": "Yenile",
+    "account": "Hesap",
+    "status": "Durum",
+    "lastLogin": "Son oturum",
+    "adminTag": "Yönetici",
+    "active": "Etkin",
+    "disabled": "Devre dışı",
+    "empty": "Kullanıcı yok"
+  },
+  "providers": {
+    "title": "Model sağlayıcıları",
+    "titleFor": "Model sağlayıcıları · {{name}}",
+    "create": "Yeni",
+    "refresh": "Yenile",
+    "empty": "Bu kullanıcıda henüz model sağlayıcı yok",
+    "emptyNoUser": "Önce soldan bir kullanıcı seçin",
+    "name": "Ad",
+    "platform": "Platform",
+    "baseUrl": "Base URL",
+    "apiKey": "API Anahtarı",
+    "enabled": "Etkin",
+    "yes": "Evet",
+    "no": "Hayır",
+    "edit": "Düzenle",
+    "delete": "Sil"
+  },
+  "modal": {
+    "createTitle": "Yeni Model Sağlayıcısı",
+    "editTitle": "Model Sağlayıcısını Düzenle",
+    "okCreate": "Oluştur",
+    "okSave": "Kaydet",
+    "cancel": "İptal",
+    "owner": "Sahibi: {{name}}",
+    "platformPlaceholder": "openai",
+    "platformRequired": "Platform seçin",
+    "namePlaceholder": "OpenAI",
+    "nameRequired": "Bir ad girin",
+    "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "baseUrlRequired": "Base URL girin",
+    "apiKeyPlaceholder": "sk-…",
+    "apiKeyRequired": "API anahtarı girin",
+    "apiKeyHint": "Yalnızca yöneticiler okuyabilir; diğer kullanıcılar maske görür."
+  },
+  "deleteDialog": {
+    "title": "Model Sağlayıcısını Sil",
+    "content": "\"{{name}}\" silinsin mi? Bu kullanıcının yapılandırması hemen devre dışı kalır.",
+    "ok": "Sil"
+  },
+  "message": {
+    "created": "Model sağlayıcısı oluşturuldu",
+    "updated": "Model sağlayıcısı güncellendi",
+    "deleted": "Silindi"
+  }
+}

@@ -9,6 +9,7 @@ import { startStaticServer, type StaticServerHandle } from './static-server.js';
 async function mkRendererFixture(): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ws-static-'));
   await fs.writeFile(path.join(dir, 'index.html'), '<!doctype html><title>root</title>');
+  await fs.writeFile(path.join(dir, 'admin.html'), '<!doctype html><title>admin</title>');
   await fs.mkdir(path.join(dir, 'assets'));
   await fs.writeFile(path.join(dir, 'assets', 'main.js'), 'console.log("hi")');
   return dir;
@@ -64,6 +65,27 @@ describe('static-server', () => {
     const r = await fetch(`${handle.localUrl}/chat/123`);
     expect(r.status).toBe(200);
     expect(await r.text()).toContain('<title>root</title>');
+  });
+
+  it('/admin resolves to admin.html, without shadowing the SPA fallback', async () => {
+    const backend = await startMockBackend((_req, res) => res.end('nope'));
+    stopBackend = backend.close;
+    handle = await startStaticServer({ staticDir, backendPort: backend.port, port: 0 });
+
+    for (const path of ['/admin', '/admin/']) {
+      const r = await fetch(`${handle.localUrl}${path}`);
+      expect(r.status).toBe(200);
+      expect(await r.text()).toContain('<title>admin</title>');
+    }
+
+    // The direct file URL still works…
+    const direct = await fetch(`${handle.localUrl}/admin.html`);
+    expect(direct.status).toBe(200);
+
+    // …and unrelated paths keep falling back to the main SPA shell.
+    const spa = await fetch(`${handle.localUrl}/chat/123`);
+    expect(spa.status).toBe(200);
+    expect(await spa.text()).toContain('<title>root</title>');
   });
 
   it('static asset /assets/main.js served', async () => {

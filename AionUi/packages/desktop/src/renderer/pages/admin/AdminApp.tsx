@@ -21,8 +21,11 @@ import {
   Tag,
   Typography,
 } from '@arco-design/web-react';
+import { useTranslation } from 'react-i18next';
 
 import { BackendHttpError, httpDelete, httpGet, httpPost, httpPut } from '@/common/adapter/httpBridge';
+
+import styles from './AdminApp.module.css';
 
 // ---------------------------------------------------------------------------
 // Types — mirror `AdminUserResponse` / `ProviderResponse` in aionui-api-types.
@@ -81,6 +84,7 @@ const formatTime = (ms: number | null | undefined): string => {
 // ---------------------------------------------------------------------------
 
 export function AdminApp() {
+  const { t } = useTranslation();
   const [gate, setGate] = useState<GateState>('loading');
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -90,6 +94,10 @@ export function AdminApp() {
   const [draft, setDraft] = useState<ProviderDraft>(null);
   const [saving, setSaving] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+
+  useEffect(() => {
+    document.title = `${t('admin.brand.mark')} · ${t('admin.brand.sub')}`;
+  }, [t]);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -102,10 +110,10 @@ export function AdminApp() {
       const status = statusOf(error);
       if (status === 401) setGate('anonymous');
       else if (status === 403) setGate('forbidden');
-      else setPageError('加载用户列表失败，请稍后重试。');
+      else setPageError(t('admin.notice.usersLoad'));
       return false;
     }
-  }, []);
+  }, [t]);
 
   // Gate: who am I, and may I use the console at all?
   useEffect(() => {
@@ -152,7 +160,7 @@ export function AdminApp() {
         const status = statusOf(error);
         if (status === 401) setGate('anonymous');
         else if (status === 403) setGate('forbidden');
-        else setPageError('加载模型服务失败。');
+        else setPageError(t('admin.notice.providersLoad'));
       })
       .finally(() => {
         if (!cancelled) setProvidersLoading(false);
@@ -160,9 +168,31 @@ export function AdminApp() {
     return () => {
       cancelled = true;
     };
-  }, [gate, selectedUserId]);
+  }, [gate, selectedUserId, t]);
 
   const selectedUser = useMemo(() => users.find((user) => user.id === selectedUserId) ?? null, [users, selectedUserId]);
+
+  const refreshProviders = useCallback(async () => {
+    if (!selectedUserId) return;
+    setProvidersLoading(true);
+    try {
+      const list = await httpGet<Provider[]>(
+        `/api/admin/users/${encodeURIComponent(selectedUserId)}/providers`
+      ).invoke();
+      setProviders(list ?? []);
+      setPageError(null);
+    } catch {
+      setPageError(t('admin.notice.providersLoad'));
+    } finally {
+      setProvidersLoading(false);
+    }
+  }, [selectedUserId, t]);
+
+  const handleGateError = useCallback((error: unknown) => {
+    const status = statusOf(error);
+    if (status === 401) setGate('anonymous');
+    else if (status === 403) setGate('forbidden');
+  }, []);
 
   const saveProvider = useCallback(
     async (values: ProviderFormValues) => {
@@ -173,56 +203,55 @@ export function AdminApp() {
           await httpPost<Provider, ProviderFormValues>(
             `/api/admin/users/${encodeURIComponent(draft.userId)}/providers`
           ).invoke(values);
-          Message.success('已为该用户创建模型服务');
+          Message.success(t('admin.message.created'));
         } else {
           await httpPut<Provider, ProviderFormValues>(
             `/api/admin/users/${encodeURIComponent(draft.userId)}/providers/${encodeURIComponent(draft.provider.id)}`
           ).invoke(values);
-          Message.success('模型服务已更新');
+          Message.success(t('admin.message.updated'));
         }
         setDraft(null);
-        const list = await httpGet<Provider[]>(
-          `/api/admin/users/${encodeURIComponent(draft.userId)}/providers`
-        ).invoke();
-        setProviders(list ?? []);
+        await refreshProviders();
       } catch (error) {
         const status = statusOf(error);
-        if (status === 401) setGate('anonymous');
-        else if (status === 403) Message.error('需要管理员权限');
-        else Message.error('保存失败，请检查填写内容。');
+        if (status === 401 || status === 403) {
+          handleGateError(error);
+          if (status === 403) Message.error(t('admin.notice.forbidden'));
+        } else {
+          Message.error(t('admin.notice.saveFailed'));
+        }
       } finally {
         setSaving(false);
       }
     },
-    [draft]
+    [draft, handleGateError, refreshProviders, t]
   );
 
   const removeProvider = useCallback(
     (provider: Provider) => {
       if (!selectedUserId) return;
       Modal.confirm({
-        title: '删除模型服务',
-        content: `确定删除「${provider.name}」吗？该用户的此配置将立即失效。`,
-        okText: '删除',
-        cancelText: '取消',
+        title: t('admin.deleteDialog.title'),
+        content: t('admin.deleteDialog.content', { name: provider.name }),
+        okText: t('admin.deleteDialog.ok'),
+        cancelText: t('admin.modal.cancel'),
         okButtonProps: { status: 'danger' },
         onOk: async () => {
           try {
             await httpDelete<void>(
               `/api/admin/users/${encodeURIComponent(selectedUserId)}/providers/${encodeURIComponent(provider.id)}`
             ).invoke();
-            Message.success('已删除');
+            Message.success(t('admin.message.deleted'));
             setProviders((current) => current.filter((item) => item.id !== provider.id));
           } catch (error) {
             const status = statusOf(error);
-            if (status === 401) setGate('anonymous');
-            else if (status === 403) Message.error('需要管理员权限');
-            else Message.error('删除失败');
+            if (status === 401 || status === 403) handleGateError(error);
+            else Message.error(t('admin.notice.deleteFailed'));
           }
         },
       });
     },
-    [selectedUserId]
+    [handleGateError, selectedUserId, t]
   );
 
   const logout = useCallback(async () => {
@@ -238,16 +267,16 @@ export function AdminApp() {
   }, []);
 
   if (gate === 'loading') {
-    return <Centered notice='正在加载管理控制台…' />;
+    return <Centered notice={t('admin.gate.loading')} />;
   }
 
   if (gate === 'anonymous') {
     return (
       <Centered
-        notice='需要先登录才能访问管理控制台。'
+        notice={t('admin.gate.anonymous')}
         action={
           <Button type='primary' onClick={() => window.location.assign('/')}>
-            前往登录
+            {t('admin.gate.anonymousAction')}
           </Button>
         }
       />
@@ -257,10 +286,10 @@ export function AdminApp() {
   if (gate === 'forbidden') {
     return (
       <Centered
-        notice='当前账号不是管理员，无法访问管理控制台。'
+        notice={t('admin.gate.forbidden')}
         action={
           <Button type='primary' onClick={() => window.location.assign('/')}>
-            返回应用
+            {t('admin.gate.forbiddenAction')}
           </Button>
         }
       />
@@ -269,48 +298,48 @@ export function AdminApp() {
 
   const userColumns = [
     {
-      title: '账号',
+      title: t('admin.users.account'),
       dataIndex: 'username',
       render: (value: string, record: AdminUser) => (
         <Space size={4}>
-          <span>{value || '（未命名）'}</span>
-          {record.is_primary && <Tag color='arcoblue'>管理员</Tag>}
+          <span>{value || '—'}</span>
+          {record.is_primary && <Tag color='arcoblue'>{t('admin.users.adminTag')}</Tag>}
         </Space>
       ),
     },
     {
-      title: '状态',
+      title: t('admin.users.status'),
       dataIndex: 'status',
       render: (value: string) => (
-        <Tag color={value === 'active' ? 'green' : 'gray'}>{value === 'active' ? '启用' : '停用'}</Tag>
+        <Tag color={value === 'active' ? 'green' : 'gray'}>
+          {value === 'active' ? t('admin.users.active') : t('admin.users.disabled')}
+        </Tag>
       ),
     },
     {
-      title: '最近登录',
+      title: t('admin.users.lastLogin'),
       dataIndex: 'last_login',
       render: (value: number | null) => formatTime(value),
     },
   ];
 
   const providerColumns = [
-    { title: '名称', dataIndex: 'name' },
-    { title: '平台', dataIndex: 'platform', width: 110 },
+    { title: t('admin.providers.name'), dataIndex: 'name' },
+    { title: t('admin.providers.platform'), dataIndex: 'platform', width: 110 },
+    { title: t('admin.providers.baseUrl'), dataIndex: 'base_url', ellipsis: true },
     {
-      title: 'Base URL',
-      dataIndex: 'base_url',
-      ellipsis: true,
-    },
-    {
-      title: 'API Key',
+      title: t('admin.providers.apiKey'),
       dataIndex: 'api_key',
       width: 200,
-      render: (value: string) => <code className='admin-key'>{value}</code>,
+      render: (value: string) => <code className={styles.key}>{value}</code>,
     },
     {
-      title: '启用',
+      title: t('admin.providers.enabled'),
       dataIndex: 'enabled',
       width: 80,
-      render: (value: boolean) => <Tag color={value ? 'green' : 'gray'}>{value ? '是' : '否'}</Tag>,
+      render: (value: boolean) => (
+        <Tag color={value ? 'green' : 'gray'}>{value ? t('admin.providers.yes') : t('admin.providers.no')}</Tag>
+      ),
     },
     {
       title: '',
@@ -321,10 +350,10 @@ export function AdminApp() {
             size='mini'
             onClick={() => selectedUserId && setDraft({ mode: 'edit', userId: selectedUserId, provider })}
           >
-            编辑
+            {t('admin.providers.edit')}
           </Button>
           <Button size='mini' status='danger' onClick={() => removeProvider(provider)}>
-            删除
+            {t('admin.providers.delete')}
           </Button>
         </Space>
       ),
@@ -332,40 +361,35 @@ export function AdminApp() {
   ];
 
   return (
-    <div className='admin-shell'>
-      <header className='admin-topbar'>
-        <div className='admin-brand'>
-          <span className='admin-brand-mark'>AionUi</span>
-          <span className='admin-brand-sub'>管理控制台</span>
+    <div className={styles.shell}>
+      <header className={styles.topbar}>
+        <div className={styles.brand}>
+          <span className={styles.brandMark}>{t('admin.brand.mark')}</span>
+          <span className={styles.brandSub}>{t('admin.brand.sub')}</span>
         </div>
         <Space size={12}>
-          <span className='admin-me'>{currentUser?.username ?? '管理员'}</span>
+          <span className={styles.me}>{currentUser?.username ?? t('admin.topbar.defaultUser')}</span>
           <Button size='small' onClick={() => window.location.assign('/')}>
-            返回应用
+            {t('admin.topbar.backToApp')}
           </Button>
           <Button size='small' status='warning' onClick={() => void logout()}>
-            退出登录
+            {t('admin.topbar.logout')}
           </Button>
         </Space>
       </header>
 
       {pageError && (
-        <Alert type='error' content={pageError} closable className='admin-alert' onClose={() => setPageError(null)} />
+        <Alert type='error' content={pageError} closable className={styles.alert} onClose={() => setPageError(null)} />
       )}
 
-      <main className='admin-body'>
+      <main className={styles.body}>
         <Card
-          className='admin-users'
-          title='用户'
+          className={styles.users}
+          title={t('admin.users.title')}
           bordered={false}
           extra={
-            <Button
-              size='mini'
-              onClick={() => {
-                void loadUsers();
-              }}
-            >
-              刷新
+            <Button size='mini' onClick={() => void loadUsers()}>
+              {t('admin.users.refresh')}
             </Button>
           }
         >
@@ -383,13 +407,17 @@ export function AdminApp() {
             onRow={(record) => ({
               onClick: () => setSelectedUserId(record.id),
             })}
-            noDataElement='暂无用户'
+            noDataElement={t('admin.users.empty')}
           />
         </Card>
 
         <Card
-          className='admin-providers'
-          title={selectedUser ? `模型服务 · ${selectedUser.username || selectedUser.id}` : '模型服务'}
+          className={styles.providers}
+          title={
+            selectedUser
+              ? t('admin.providers.titleFor', { name: selectedUser.username || selectedUser.id })
+              : t('admin.providers.title')
+          }
           bordered={false}
           extra={
             <Space size={8}>
@@ -398,22 +426,10 @@ export function AdminApp() {
                 disabled={!selectedUserId}
                 onClick={() => selectedUserId && setDraft({ mode: 'create', userId: selectedUserId })}
               >
-                新建
+                {t('admin.providers.create')}
               </Button>
-              <Button
-                size='mini'
-                disabled={!selectedUserId}
-                onClick={() => {
-                  if (!selectedUserId) return;
-                  setProvidersLoading(true);
-                  void httpGet<Provider[]>(`/api/admin/users/${encodeURIComponent(selectedUserId)}/providers`)
-                    .invoke()
-                    .then((list) => setProviders(list ?? []))
-                    .catch(() => setPageError('刷新模型服务失败。'))
-                    .finally(() => setProvidersLoading(false));
-                }}
-              >
-                刷新
+              <Button size='mini' disabled={!selectedUserId} onClick={() => void refreshProviders()}>
+                {t('admin.providers.refresh')}
               </Button>
             </Space>
           }
@@ -425,7 +441,7 @@ export function AdminApp() {
             data={providers}
             loading={providersLoading}
             pagination={false}
-            noDataElement={selectedUserId ? '该用户还没有配置模型服务' : '请先在左侧选择用户'}
+            noDataElement={selectedUserId ? t('admin.providers.empty') : t('admin.providers.emptyNoUser')}
           />
         </Card>
       </main>
@@ -433,9 +449,9 @@ export function AdminApp() {
       <ProviderModal
         draft={draft}
         saving={saving}
+        ownerLabel={selectedUser?.username ?? ''}
         onCancel={() => setDraft(null)}
         onSubmit={saveProvider}
-        ownerLabel={selectedUser?.username ?? ''}
       />
     </div>
   );
@@ -452,6 +468,7 @@ function ProviderModal(props: {
   onCancel: () => void;
   onSubmit: (values: ProviderFormValues) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const { draft, saving, ownerLabel, onCancel, onSubmit } = props;
   const [form] = Form.useForm<ProviderFormValues>();
 
@@ -477,9 +494,9 @@ function ProviderModal(props: {
   return (
     <Modal
       visible
-      title={draft.mode === 'create' ? '为用户新建模型服务' : '编辑模型服务'}
-      okText={draft.mode === 'create' ? '创建' : '保存'}
-      cancelText='取消'
+      title={draft.mode === 'create' ? t('admin.modal.createTitle') : t('admin.modal.editTitle')}
+      okText={draft.mode === 'create' ? t('admin.modal.okCreate') : t('admin.modal.okSave')}
+      cancelText={t('admin.modal.cancel')}
       confirmLoading={saving}
       onCancel={onCancel}
       onOk={() => {
@@ -488,28 +505,40 @@ function ProviderModal(props: {
       autoFocus={false}
       focusLock
     >
-      <Typography.Paragraph type='secondary' className='admin-modal-hint'>
-        服务归属：{ownerLabel || draft.userId}
+      <Typography.Paragraph type='secondary' className={styles.modalHint}>
+        {t('admin.modal.owner', { name: ownerLabel || draft.userId })}
       </Typography.Paragraph>
       <Form form={form} layout='vertical'>
-        <Form.Item label='平台' field='platform' rules={[{ required: true, message: '请选择平台' }]}>
-          <Select options={PLATFORM_OPTIONS} allowCreate placeholder='openai' />
-        </Form.Item>
-        <Form.Item label='名称' field='name' rules={[{ required: true, message: '请输入名称' }]}>
-          <Input placeholder='OpenAI' />
-        </Form.Item>
-        <Form.Item label='Base URL' field='base_url' rules={[{ required: true, message: '请输入 Base URL' }]}>
-          <Input placeholder='https://api.openai.com/v1' />
+        <Form.Item
+          label={t('admin.providers.platform')}
+          field='platform'
+          rules={[{ required: true, message: t('admin.modal.platformRequired') }]}
+        >
+          <Select options={PLATFORM_OPTIONS} allowCreate placeholder={t('admin.modal.platformPlaceholder')} />
         </Form.Item>
         <Form.Item
-          label='API Key'
-          field='api_key'
-          rules={[{ required: true, message: '请输入 API Key' }]}
-          extra='仅管理员可见；普通用户只会看到掩码。'
+          label={t('admin.providers.name')}
+          field='name'
+          rules={[{ required: true, message: t('admin.modal.nameRequired') }]}
         >
-          <Input.Password placeholder='sk-…' />
+          <Input placeholder={t('admin.modal.namePlaceholder')} />
         </Form.Item>
-        <Form.Item label='启用' field='enabled' triggerPropName='checked'>
+        <Form.Item
+          label={t('admin.providers.baseUrl')}
+          field='base_url'
+          rules={[{ required: true, message: t('admin.modal.baseUrlRequired') }]}
+        >
+          <Input placeholder={t('admin.modal.baseUrlPlaceholder')} />
+        </Form.Item>
+        <Form.Item
+          label={t('admin.providers.apiKey')}
+          field='api_key'
+          rules={[{ required: true, message: t('admin.modal.apiKeyRequired') }]}
+          extra={t('admin.modal.apiKeyHint')}
+        >
+          <Input.Password placeholder={t('admin.modal.apiKeyPlaceholder')} />
+        </Form.Item>
+        <Form.Item label={t('admin.providers.enabled')} field='enabled' triggerPropName='checked'>
           <Switch />
         </Form.Item>
       </Form>
@@ -520,10 +549,13 @@ function ProviderModal(props: {
 // ---------------------------------------------------------------------------
 
 function Centered(props: { notice: string; action?: ReactNode }) {
+  const { t } = useTranslation();
   return (
-    <div className='admin-centered'>
-      <Card bordered={false} className='admin-centered-card'>
-        <Typography.Title heading={5}>AionUi 管理控制台</Typography.Title>
+    <div className={styles.centered}>
+      <Card bordered={false} className={styles.centeredCard}>
+        <Typography.Title heading={5}>
+          {t('admin.brand.mark')} · {t('admin.brand.sub')}
+        </Typography.Title>
         <Typography.Paragraph type='secondary'>{props.notice}</Typography.Paragraph>
         {props.action}
       </Card>

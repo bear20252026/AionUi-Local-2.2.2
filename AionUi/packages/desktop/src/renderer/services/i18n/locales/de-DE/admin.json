@@ -1,0 +1,80 @@
+{
+  "brand": {
+    "mark": "AionUi",
+    "sub": "Admin-Konsole"
+  },
+  "topbar": {
+    "backToApp": "Zur App",
+    "logout": "Abmelden",
+    "defaultUser": "Administrator"
+  },
+  "gate": {
+    "loading": "Admin-Konsole wird geladen…",
+    "anonymous": "Zum Zugriff auf die Admin-Konsole anmelden.",
+    "anonymousAction": "Zur Anmeldung",
+    "forbidden": "Dieses Konto ist kein Administrator.",
+    "forbiddenAction": "Zur App"
+  },
+  "notice": {
+    "usersLoad": "Benutzerliste konnte nicht geladen werden. Bitte später erneut versuchen.",
+    "providersLoad": "Model-Anbieter konnten nicht geladen werden.",
+    "saveFailed": "Speichern fehlgeschlagen — Eingaben prüfen.",
+    "deleteFailed": "Löschen fehlgeschlagen.",
+    "forbidden": "Administratorzugriff erforderlich"
+  },
+  "users": {
+    "title": "Benutzer",
+    "refresh": "Aktualisieren",
+    "account": "Konto",
+    "status": "Status",
+    "lastLogin": "Zuletzt angemeldet",
+    "adminTag": "Administrator",
+    "active": "Aktiv",
+    "disabled": "Deaktiviert",
+    "empty": "Keine Benutzer"
+  },
+  "providers": {
+    "title": "Modell-Anbieter",
+    "titleFor": "Modell-Anbieter · {{name}}",
+    "create": "Neu",
+    "refresh": "Aktualisieren",
+    "empty": "Dieser Benutzer hat noch keine Modell-Anbieter",
+    "emptyNoUser": "Bitte links einen Benutzer auswählen",
+    "name": "Name",
+    "platform": "Plattform",
+    "baseUrl": "Base URL",
+    "apiKey": "API-Schlüssel",
+    "enabled": "Aktiv",
+    "yes": "Ja",
+    "no": "Nein",
+    "edit": "Bearbeiten",
+    "delete": "Löschen"
+  },
+  "modal": {
+    "createTitle": "Neuer Modell-Anbieter",
+    "editTitle": "Modell-Anbieter bearbeiten",
+    "okCreate": "Erstellen",
+    "okSave": "Speichern",
+    "cancel": "Abbrechen",
+    "owner": "Besitzer: {{name}}",
+    "platformPlaceholder": "openai",
+    "platformRequired": "Plattform auswählen",
+    "namePlaceholder": "OpenAI",
+    "nameRequired": "Namen eingeben",
+    "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "baseUrlRequired": "Base URL eingeben",
+    "apiKeyPlaceholder": "sk-…",
+    "apiKeyRequired": "API-Schlüssel eingeben",
+    "apiKeyHint": "Nur Administratoren können ihn lesen; alle anderen sehen eine Maske."
+  },
+  "deleteDialog": {
+    "title": "Modell-Anbieter löschen",
+    "content": "„{{name}}“ löschen? Die Konfiguration dieses Benutzers wird sofort deaktiviert.",
+    "ok": "Löschen"
+  },
+  "message": {
+    "created": "Modell-Anbieter erstellt",
+    "updated": "Modell-Anbieter aktualisiert",
+    "deleted": "Gelöscht"
+  }
+}
