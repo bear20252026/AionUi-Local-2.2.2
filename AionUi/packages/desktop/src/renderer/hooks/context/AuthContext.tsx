@@ -49,9 +49,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const AUTH_USER_ENDPOINT = '/api/auth/user';
 
-// Login removed: every runtime is treated as the local desktop session so the
-// app never redirects to /login (local / no-login build).
-const isDesktopRuntime = true;
+const isDesktopRuntime = typeof window !== 'undefined' && Boolean(window.electronAPI);
 
 // Clear expired auth cache including cookies and localStorage
 // 清除过期的认证缓存，包括 Cookie 和 localStorage

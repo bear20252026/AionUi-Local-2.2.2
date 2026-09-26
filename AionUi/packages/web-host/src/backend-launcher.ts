@@ -665,7 +665,9 @@ export class BackendLifecycleManager {
     const args = buildSpawnArgs({
       port: this._port,
       dbPath,
-      local: true,
+      // Upstream hardcodes single-user local mode for the hosted web backend;
+      // per-user JWT login (identity_mode=webui) is opt-in via AIONUI_MULTIUSER=1.
+      local: process.env.AIONUI_MULTIUSER !== '1',
       parentPid: process.pid,
       logDir,
       workDir: dirs?.workDir,

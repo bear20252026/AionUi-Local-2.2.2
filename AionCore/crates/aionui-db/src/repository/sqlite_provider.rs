@@ -38,16 +38,15 @@ impl IProviderRepository for SqliteProviderRepository {
         Ok(row)
     }
 
-    async fn find_by_model(&self, _user_id: &str, model_id: &str) -> Result<Option<Provider>, DbError> {
-        // In local / offline mode the built-in "aionrs" provider id is never
-        // pushed by a login flow, so built-in aionrs agents reference their model
-        // by name only. The relevant provider rows may be tagged with either the
-        // local `system_default_user` id or a previously-imported account id, but
-        // they are all the local user's own configurations. Match any enabled
-        // provider (regardless of user_id) whose `models` JSON array contains the
-        // requested model name. This keeps aionrs working without any fake
-        // provider row or fake user.
-        let rows = sqlx::query_as::<_, Provider>("SELECT * FROM providers WHERE enabled = 1")
+    async fn find_by_model(&self, user_id: &str, model_id: &str) -> Result<Option<Provider>, DbError> {
+        // Built-in "aionrs" agents reference their model by name alone instead of
+        // an explicit provider id, and the login-flow-pushed `id='aionrs'` row
+        // only exists for signed-in cloud accounts. Fall back to the requesting
+        // user's own enabled provider whose `models` list contains the model.
+        // Scoped to user_id on purpose: in multi-user mode another user's row
+        // (and its API key) must never resolve here.
+        let rows = sqlx::query_as::<_, Provider>("SELECT * FROM providers WHERE enabled = 1 AND user_id = ?")
+            .bind(user_id)
             .fetch_all(&self.pool)
             .await?;
 
