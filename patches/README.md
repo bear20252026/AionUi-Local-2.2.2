@@ -12,7 +12,7 @@ git -C AionCore diff > patches/aioncore-v0.2.2-no-login.patch
 | 文件 | 上游基线 | 内容 | 用途 |
 |------|----------|------|------|
 | `aioncore-v0.2.2-no-login.patch` | iOfficeAI/AionCore v0.2.2 | provider `find_by_model` 回退（3 个文件）：trait 默认方法 + sqlite 实现（`WHERE enabled=1 AND user_id=?`，**严格限请求者本人**）+ aionrs 工厂回退 | 桌面 + 网页，必打 |
-| `aionui-v2.2.2-multiuser.patch` | iOfficeAI/AionUi v2.2.2 | `web-host/src/backend-launcher.ts`：`--local` 硬编码改为 `AIONUI_MULTIUSER` 环境变量开关（默认关 = 上游单用户） | 网页版多用户 |
+| `aionui-v2.2.2-multiuser.patch` | iOfficeAI/AionUi v2.2.2 | ① `web-host/src/backend-launcher.ts`：`--local` 硬编码改为 `AIONUI_MULTIUSER` 环境变量开关（默认关 = 上游单用户）；② 浏览器端 CSRF 双提交补齐（上游 M6 拆了前端 CSRF、后端 webui 模式却仍强制校验）：`httpBridge` 读 `aionui-csrf-token` cookie 并给状态变更请求附 `x-csrf-token`（含缺 cookie 时的预热 GET），`sessionRefresh`/`configService`/`AuthContext` 登出/文件上传/语音转写同步附头，附回归测试 | 网页版多用户 |
 | `aionui-v2.2.2-auth-bypass.patch` | iOfficeAI/AionUi v2.2.2 | `AuthContext.tsx` 硬编码 `isDesktopRuntime = true`（任何运行时不跳 /login） | **仅**"网页免登录"部署；多用户部署**禁用**（进了不了登录页），桌面版打不打行为都一样 |
 
 行为速查：

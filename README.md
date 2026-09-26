@@ -65,6 +65,7 @@ AIONUI_MULTIUSER=0 pm2 restart aionui-web --update-env && pm2 save
 
 - **数据连续**：`admin` 登录身份就是 `system_default_user`，现有全部对话、provider 配置原样可见。
 - **隔离边界**：对话/消息/provider（API Key）/MCP/文件工作区全部按 user_id 隔离；但所有用户仍跑在同一个 aioncore 进程、同一 OS 用户下——应用层隔离，不是虚拟机级。
+- **CSRF**：webui 模式后端强制双提交校验，前端补丁（multiuser patch 内）自动携带 `x-csrf-token`——上游开源版 M6 拆了前端 CSRF 层而后端仍校验，直接用上游会导致所有写操作 403。
 - 网关（Authelia）可保留作外围门；应用层限流、会话吊销（`session_generation`）、QR 登录（机主免密登自己号）均已内置。
 
 ## 云端构建

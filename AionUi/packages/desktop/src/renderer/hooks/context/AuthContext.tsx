@@ -1,7 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PREVIEW_SCOPE_KEY_PREFIX } from '@/renderer/pages/conversation/Preview/context/previewScope';
 import { refreshSession } from '@/common/adapter/sessionRefresh';
-// M6: CSRF removed with legacy webserver — stub functions for compatibility, re-implement in M7
+import { ensureCsrfCookie, resolveCoreCsrfToken } from '@/common/adapter/httpBridge';
+// CSRF: the login POST is exempt server-side (csrf.rs), so these stay stubs —
+// state-changing requests elsewhere attach the real token via httpBridge.
 const withCsrfToken = <T extends Record<string, unknown>>(data: T): T => data;
 const hasValidCsrfToken = (): boolean => true;
 const clearCookie = (_name: string, _path?: string): void => {};
@@ -277,11 +279,15 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     }
 
     try {
+      await ensureCsrfCookie();
+      const csrfToken = resolveCoreCsrfToken();
       await fetch('/logout', {
         method: 'POST',
-        // Logout also needs CSRF token / 登出同样需要 CSRF Token
+        // Logout is state-changing and not CSRF-exempt — carry the
+        // double-submit header (empty in desktop local mode: no CSRF layer).
         headers: {
           'Content-Type': 'application/json',
+          ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
         },
         credentials: 'include',
         body: JSON.stringify(withCsrfToken({})),

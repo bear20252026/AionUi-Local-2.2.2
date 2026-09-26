@@ -1,4 +1,5 @@
 import type { ConfigKey, ConfigKeyMap } from './configKeys';
+import { ensureCsrfCookie, resolveCoreCsrfToken } from '@/common/adapter/httpBridge';
 
 type Subscriber = (value: unknown) => void;
 
@@ -23,6 +24,11 @@ async function fetchJson<T>(method: string, path: string, body?: unknown): Promi
   const headers: Record<string, string> = {};
   if (body !== undefined) {
     headers['Content-Type'] = 'application/json';
+  }
+  if (method !== 'GET' && method !== 'HEAD') {
+    await ensureCsrfCookie();
+    const csrfToken = resolveCoreCsrfToken();
+    if (csrfToken) headers['x-csrf-token'] = csrfToken;
   }
   const response = await fetch(url, {
     method,

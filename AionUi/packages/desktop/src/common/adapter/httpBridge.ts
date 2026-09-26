@@ -184,23 +184,45 @@ function isAuthEndpoint(path: string): boolean {
   return path.startsWith(REFRESH_ENDPOINT) || path === '/login' || path === '/logout';
 }
 
+const CSRF_COOKIE_NAME = 'aionui-csrf-token';
+
 /**
  * Resolve the Core CSRF double-submit token for the current context.
  *
- * The open-source WebUI removed its CSRF layer with the legacy webserver (M6);
- * a double-submit scheme is slated to return in M7. Until then this is a stub
- * that reports "no token available", so the shared session-refresh primitive
- * (`sessionRefresh.ts`) attaches no `x-csrf-token` header and the backend —
- * which enforces no CSRF check here — accepts the request unchanged.
- *
- * It exists as the single seam every state-changing request would call for its
- * token, so restoring CSRF in M7 (and the aionpro superset, whose backend does
- * enforce the double-submit check) only swaps this body — no caller changes.
- *
- * Returns '' — always, for now.
+ * The backend enables its CSRF middleware only in non-local identity mode
+ * (web UI multi-user): every state-changing request must carry an
+ * `x-csrf-token` header matching the `aionui-csrf-token` cookie (issued, not
+ * HttpOnly, on any middleware-wrapped GET response). Desktop/local mode has no
+ * CSRF layer — this returns '' there and callers skip the header.
  */
 export function resolveCoreCsrfToken(): string {
-  return '';
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${CSRF_COOKIE_NAME}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+let csrfEnsureInFlight: Promise<void> | null = null;
+
+/**
+ * Guarantee the CSRF cookie exists before a state-changing request reads it.
+ *
+ * Single-flight: concurrent first POSTs share one GET. Failure clears the
+ * in-flight promise so the next caller retries; callers then re-read the cookie
+ * via `resolveCoreCsrfToken()` and attach it only when present.
+ */
+export function ensureCsrfCookie(): Promise<void> {
+  if (!isWebUiBrowserMode() || resolveCoreCsrfToken()) {
+    return Promise.resolve();
+  }
+  if (!csrfEnsureInFlight) {
+    csrfEnsureInFlight = fetch(`${getBaseUrl()}/api/auth/status`, { method: 'GET' })
+      .then((): void => undefined)
+      .catch((): void => undefined)
+      .finally(() => {
+        csrfEnsureInFlight = null;
+      });
+  }
+  return csrfEnsureInFlight;
 }
 
 function sendHttpRequest(
@@ -231,6 +253,16 @@ export async function httpRequest<T>(
 
   if (options?.headers) {
     Object.assign(headers, options.headers);
+  }
+
+  // Browser + state-changing method → attach the CSRF double-submit header.
+  // No-op in desktop/local mode (no CSRF middleware there).
+  if (method !== 'GET' && method !== 'HEAD' && isWebUiBrowserMode()) {
+    await ensureCsrfCookie();
+    const csrfToken = resolveCoreCsrfToken();
+    if (csrfToken && !('x-csrf-token' in headers)) {
+      headers['x-csrf-token'] = csrfToken;
+    }
   }
 
   console.debug(

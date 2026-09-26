@@ -33,12 +33,17 @@ describe('httpRequest 401 → refresh → replay (WebUI #4124 fix)', () => {
   beforeEach(() => {
     // Browser mode so getBaseUrl() === '' and refresh is active.
     delete (window as WindowWithPort).__backendPort;
+    // Pre-seed the CSRF cookie (normally issued by the boot GET) so
+    // ensureCsrfCookie() stays a no-op and these tests observe only the
+    // 401 → refresh → replay sequence.
+    document.cookie = 'aionui-csrf-token=test-token; path=/';
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     delete (window as WindowWithPort).__backendPort;
+    document.cookie = 'aionui-csrf-token=; max-age=0; path=/';
   });
 
   it('refreshes once and replays the original request on 401, returning unwrapped data', async () => {

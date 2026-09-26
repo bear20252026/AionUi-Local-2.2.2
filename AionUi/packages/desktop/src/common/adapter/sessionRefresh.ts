@@ -32,7 +32,7 @@
  * `browser.ts` can share it without bootstrapping each other's WebSocket.
  */
 
-import { resolveCoreCsrfToken } from './httpBridge';
+import { ensureCsrfCookie, resolveCoreCsrfToken } from './httpBridge';
 
 /** WebSocket close code the backend uses for auth policy violations (RFC 6455 §7.4.1). */
 export const WS_CLOSE_POLICY_VIOLATION = 1008;
@@ -79,12 +79,12 @@ export function refreshSession(): Promise<boolean> {
 
 async function performRefresh(): Promise<boolean> {
   try {
-    // Attach the CSRF double-submit header when a token is available. The
-    // open-source WebUI has no CSRF layer yet (M6 removed it, M7 restores it), so
-    // resolveCoreCsrfToken() returns '' and no header is sent; the aionpro superset
-    // resolves a real token here and its backend enforces the check. The matching
-    // cookie, when one exists, rides `credentials: 'include'`.
+    // Attach the CSRF double-submit header when a token is available.
+    // ensureCsrfCookie() guarantees the cookie exists in web UI multi-user mode
+    // (backend CSRF middleware is on outside local identity); desktop local mode
+    // has no CSRF layer and resolveCoreCsrfToken() stays ''.
     const headers: Record<string, string> = {};
+    await ensureCsrfCookie();
     const csrfToken = resolveCoreCsrfToken();
     if (csrfToken) {
       headers['x-csrf-token'] = csrfToken;
