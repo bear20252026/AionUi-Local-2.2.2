@@ -191,7 +191,13 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
       // static files + SPA fallback
       await serveHandler(req, res, {
         public: opts.staticDir,
-        rewrites: [{ source: '**', destination: '/index.html' }],
+        // `/admin` is the admin console's clean URL; everything else falls
+        // back to the main SPA shell.
+        rewrites: [
+          { source: '/admin', destination: '/admin.html' },
+          { source: '/admin/', destination: '/admin.html' },
+          { source: '**', destination: '/index.html' },
+        ],
         // Deploy correctness: HTML always revalidates (a new build is picked
         // up on the next load, no hard-refresh needed), while content-hashed
         // build assets are immutable and safe to cache for a year.

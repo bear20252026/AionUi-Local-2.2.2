@@ -9,6 +9,24 @@ pub struct PublicUser {
     pub username: String,
 }
 
+/// Admin console user listing entry (`GET /api/admin/users`).
+///
+/// Deliberately excludes `password_hash`, `jwt_secret` and
+/// `encryption_secret` — those must never reach an API response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AdminUserResponse {
+    pub id: String,
+    pub username: String,
+    /// `UserType` as its string form (`local` / `external`).
+    pub user_type: String,
+    /// `UserStatus` as its string form (`active` / `disabled`).
+    pub status: String,
+    pub created_at: i64,
+    pub last_login: Option<i64>,
+    /// True for the primary WebUI (admin) account.
+    pub is_primary: bool,
+}
+
 /// Login request body for `POST /login`.
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {

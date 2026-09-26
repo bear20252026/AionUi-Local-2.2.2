@@ -22,7 +22,7 @@ use aionui_db::{
     SqliteAssistantOverlayRepository, SqliteAssistantOverrideRepository, SqliteAssistantPreferenceRepository,
     SqliteAssistantRepository, SqliteClientPreferenceRepository, SqliteConversationRepository,
     SqliteFeedbackDiagnosticsRepository, SqliteProviderRepository, SqliteRemoteAgentRepository,
-    SqliteSettingsRepository,
+    SqliteSettingsRepository, SqliteUserRepository,
 };
 use aionui_extension::{
     AssistantRuleDispatcher, ExtensionRegistry, ExtensionRouterState, ExtensionStateStore, ExternalPathsManager,
@@ -498,8 +498,9 @@ pub fn build_system_state(services: &AppServices) -> SystemRouterState {
         version_check_service: VersionCheckService::new(http_client, env!("CARGO_PKG_VERSION").to_owned()),
         runtime_prepare_service: RuntimePrepareService::new(services.event_bus.clone()),
         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
-            SqliteFeedbackDiagnosticsRepository::new(pool),
+            SqliteFeedbackDiagnosticsRepository::new(pool.clone()),
         )),
+        user_repo: Arc::new(SqliteUserRepository::new(pool)),
     }
 }
 

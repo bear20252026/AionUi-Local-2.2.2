@@ -45,6 +45,7 @@ fn build_state(db: &aionui_db::Database) -> SystemRouterState {
         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
             SqliteFeedbackDiagnosticsRepository::new(db.pool().clone()),
         )),
+        user_repo: Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone())),
     }
 }
 
@@ -162,9 +163,9 @@ async fn list_providers_empty() {
 }
 
 #[tokio::test]
-async fn list_providers_returns_plaintext_api_key() {
+async fn list_providers_masks_api_key_for_non_admin() {
     let (_app, db) = setup().await;
-    create_one(&db).await;
+    let (_, id) = create_one(&db).await;
 
     let app2 = system_routes(build_state(&db));
     let resp = app2.oneshot(get_request("/api/providers")).await.unwrap();
@@ -174,10 +175,10 @@ async fn list_providers_returns_plaintext_api_key() {
     let providers = json["data"].as_array().unwrap();
     assert_eq!(providers.len(), 1);
 
-    let api_key = providers[0]["api_key"].as_str().unwrap();
-    // Pre-launch: api_key is returned plaintext on the wire (encrypted at rest).
-    assert_eq!(api_key, "sk-ant-api03-test1234");
-    assert!(!api_key.contains("***"));
+    // A non-admin requester may use the key but never read it. Plaintext for
+    // the admin identity is covered by `admin_routes.rs`.
+    assert_eq!(providers[0]["id"], id);
+    assert_eq!(providers[0]["api_key"], "********");
 }
 
 // ===========================================================================
@@ -201,7 +202,9 @@ async fn create_provider_success() {
     assert_eq!(data["platform"], "anthropic");
     assert_eq!(data["name"], "Anthropic");
     assert_eq!(data["base_url"], "https://api.anthropic.com");
-    assert_eq!(data["api_key"], "sk-ant-api03-test1234");
+    // The creator is not the admin identity, so the key it just stored is
+    // echoed back masked (see `admin_routes.rs` for the plaintext path).
+    assert_eq!(data["api_key"], "********");
     assert!(data["enabled"].as_bool().unwrap());
     assert!(data["models"].as_array().unwrap().is_empty());
     assert!(data["created_at"].as_i64().unwrap() > 0);
@@ -225,7 +228,7 @@ async fn create_provider_with_supplied_id() {
     let json = body_json(resp).await;
     let data = &json["data"];
     assert_eq!(data["id"], "caller-id-123");
-    assert_eq!(data["api_key"], "sk-test");
+    assert_eq!(data["api_key"], "********");
     assert_eq!(data["model_enabled"]["gpt-4"], true);
     assert_eq!(data["model_enabled"]["gpt-3.5"], false);
 }
@@ -460,7 +463,7 @@ async fn update_provider_name() {
 }
 
 #[tokio::test]
-async fn update_provider_api_key_returns_plaintext() {
+async fn update_provider_api_key_stays_masked_for_non_admin() {
     let (_app, db) = setup().await;
     let (_, id) = create_one(&db).await;
 
@@ -476,8 +479,7 @@ async fn update_provider_api_key_returns_plaintext() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let json = body_json(resp).await;
-    let api_key = json["data"]["api_key"].as_str().unwrap();
-    assert_eq!(api_key, "new-key-abcdefgh");
+    assert_eq!(json["data"]["api_key"], "********");
 }
 
 #[tokio::test]

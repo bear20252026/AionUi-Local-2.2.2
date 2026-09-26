@@ -1,0 +1,45 @@
+<!doctype html>
+<html data-theme="light" data-color-scheme="default">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="application-name" content="AionUi Admin" />
+    <meta name="theme-color" content="#4E5969" />
+    <link rel="icon" type="image/png" href="./pwa/icon-192.png" />
+    <title>AionUi Admin</title>
+    <script>
+      // Restore theme synchronously to avoid a flash of the wrong palette.
+      (function () {
+        try {
+          var theme = localStorage.getItem('__aionui_theme');
+          if (theme) document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        overflow: hidden;
+        background: var(--color-bg-2, #f7f8fa);
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      // Arco reads the theme from the body attribute.
+      try {
+        var t = localStorage.getItem('__aionui_theme');
+        if (t) document.body.setAttribute('arco-theme', t);
+      } catch (e) {}
+    </script>
+    <div id="root"></div>
+    <script type="module" src="./admin.tsx"></script>
+  </body>
+</html>

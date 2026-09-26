@@ -1,0 +1,119 @@
+/**
+ * @license
+ * Copyright 2025 AionUi (aionui.com)
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+.admin-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--admin-bg, #f7f8fa);
+  color: var(--admin-ink, #1d2129);
+}
+
+.admin-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 20px;
+  background: var(--admin-bar, #ffffff);
+  border-bottom: 1px solid var(--admin-line, #e5e6eb);
+}
+
+.admin-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.admin-brand-mark {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+}
+
+.admin-brand-sub {
+  font-size: 13px;
+  color: var(--admin-ink-2, #4e5969);
+}
+
+.admin-me {
+  font-size: 13px;
+  color: var(--admin-ink-2, #4e5969);
+}
+
+.admin-alert {
+  margin: 12px 20px 0;
+}
+
+.admin-body {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  padding: 16px 20px 20px;
+}
+
+.admin-users {
+  width: 420px;
+  flex: none;
+  overflow: auto;
+  background: var(--admin-card, #ffffff);
+}
+
+.admin-providers {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--admin-card, #ffffff);
+}
+
+.admin-key {
+  font-size: 12px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  word-break: break-all;
+}
+
+.admin-modal-hint {
+  margin-bottom: 12px;
+}
+
+.admin-centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: var(--admin-bg, #f7f8fa);
+}
+
+.admin-centered-card {
+  width: 380px;
+  padding: 8px;
+  text-align: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .admin-shell,
+  .admin-centered {
+    --admin-bg: #17171a;
+    --admin-bar: #1f1f23;
+    --admin-card: #1f1f23;
+    --admin-line: #2e2e33;
+    --admin-ink: #e5e6eb;
+    --admin-ink-2: #a9aeb8;
+  }
+}
+
+html[data-theme='dark'] .admin-shell,
+html[data-theme='dark'] .admin-centered {
+  --admin-bg: #17171a;
+  --admin-bar: #1f1f23;
+  --admin-card: #1f1f23;
+  --admin-line: #2e2e33;
+  --admin-ink: #e5e6eb;
+  --admin-ink-2: #a9aeb8;
+}

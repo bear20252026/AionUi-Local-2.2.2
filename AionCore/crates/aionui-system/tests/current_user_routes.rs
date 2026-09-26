@@ -49,6 +49,7 @@ async fn setup() -> axum::Router {
         feedback_diagnostics_service: FeedbackDiagnosticsService::new(Arc::new(
             SqliteFeedbackDiagnosticsRepository::new(db.pool().clone()),
         )),
+        user_repo: Arc::new(aionui_db::SqliteUserRepository::new(db.pool().clone())),
     };
     system_routes(state)
 }
