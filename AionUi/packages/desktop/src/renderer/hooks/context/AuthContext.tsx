@@ -66,7 +66,10 @@ function clearAuthCache(): void {
     // Clear localStorage auth-related items, plus per-user UI state that must not
     // leak across accounts. Preview scopes are keyed by project id and hold file
     // content, so leaving them behind would show the next user the previous one's
-    // open tabs — and nothing else ever cleaned them up.
+    // open tabs — and nothing else ever cleaned them up. The conversation
+    // unread flags and history-search keywords carry another account's
+    // conversation ids/titles, so they go too.
+    const EXACT_KEYS_TO_REMOVE = ['conversation-manual-unread-ids', 'conversation.historySearch.recentKeywords'];
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -75,7 +78,8 @@ function clearAuthCache(): void {
         (key.includes('auth') ||
           key.includes('csrf') ||
           key.includes('token') ||
-          key.startsWith(PREVIEW_SCOPE_KEY_PREFIX))
+          key.startsWith(PREVIEW_SCOPE_KEY_PREFIX) ||
+          EXACT_KEYS_TO_REMOVE.includes(key))
       ) {
         keysToRemove.push(key);
       }

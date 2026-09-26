@@ -11,6 +11,10 @@ vi.mock('@/renderer/utils/emitter', () => ({
   addEventListener: vi.fn(),
 }));
 
+vi.mock('@/renderer/hooks/context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'test-user', username: 'tester' }, status: 'authenticated' }),
+}));
+
 vi.mock('@/common', () => ({
   ipcBridge: {
     database: {

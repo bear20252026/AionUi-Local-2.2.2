@@ -5,6 +5,7 @@ import { changeLanguage } from '@/renderer/services/i18n';
 import { useNavigate } from 'react-router-dom';
 import AppLoader from '@renderer/components/layout/AppLoader';
 import { useAuth } from '../../hooks/context/AuthContext';
+import { resetConversationListStore } from '@renderer/pages/conversation/GroupedHistory/hooks/useConversationListSync';
 import './LoginPage.css';
 
 type MessageState = {
@@ -158,6 +159,10 @@ const LoginPage: React.FC = () => {
 
         const successText = t('login.success');
         showMessage({ type: 'success', text: successText });
+
+        // Privacy: wipe the previous account's conversation rows from the
+        // renderer store before the sidebar can mount for this one.
+        resetConversationListStore();
 
         window.setTimeout(() => {
           void navigate('/guid', { replace: true });

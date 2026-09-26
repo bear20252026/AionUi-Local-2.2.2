@@ -6,6 +6,7 @@
 
 import { ipcBridge } from '@/common';
 import type { TChatConversation } from '@/common/config/storage';
+import { useAuth } from '@/renderer/hooks/context/AuthContext';
 import { addEventListener } from '@/renderer/utils/emitter';
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
@@ -252,6 +253,10 @@ const persistManualUnread = () => {
 const listeners = new Set<() => void>();
 
 let isStoreInitialized = false;
+// Module-level (not a component ref): the sidebar unmounts during logout, so a
+// ref would forget the previous identity across the login-page gap and an
+// account switch could slip one stale render through.
+let lastObservedUserId: string | null | undefined;
 let conversationsState: TChatConversation[] = [];
 let generatingConversationIdsState = new Set<string>();
 // Per-conversation set of pending confirmation ids (permission / acp_permission
@@ -580,6 +585,30 @@ const setActiveConversationState = (conversation_id: string | null) => {
   activeConversationIdState = conversation_id;
 };
 
+/**
+ * Drop every piece of conversation-list state loaded for a previous identity.
+ * One account's sidebar titles must never render for the next one (the backend
+ * list is already user-scoped; this store is the renderer-side residue). WS
+ * listeners registered by init stay attached — they just refresh whatever
+ * identity is current. Does NOT touch `isStoreInitialized`: listeners are
+ * registered exactly once.
+ */
+export const resetConversationListStore = (): void => {
+  conversationsState = [];
+  generatingConversationIdsState = new Set<string>();
+  waitingConfirmationIdsByConversationState = new Map<string, Set<string>>();
+  waitingConfirmationConversationIdsState = new Set<string>();
+  completionUnreadConversationIdsState = new Set<string>();
+  completedConversationIdsState = new Set<string>();
+  conversation_idsState = new Set<string>();
+  projectIdByIdState = new Map<string, string | null>();
+  activeConversationIdState = null;
+  completedTurnIdByConversation.clear();
+  manualUnreadConversationIdsState = new Set<string>();
+  persistManualUnread();
+  emitStoreChange();
+};
+
 const initializeConversationListSyncStore = () => {
   if (isStoreInitialized) {
     return;
@@ -667,6 +696,27 @@ export const useConversationListSync = () => {
   useEffect(() => {
     initializeConversationListSyncStore();
   }, []);
+
+  // Identity switch (account login / session re-auth): wipe the previous
+  // account's rows before they can paint, then load the new account's list.
+  // The login page also resets synchronously so the very first paint after a
+  // switch is already empty; this effect is the safety net for any other entry
+  // path (QR login, session refresh, direct navigation).
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    if (lastObservedUserId === userId) return;
+    const isFirstObservation = lastObservedUserId === undefined;
+    lastObservedUserId = userId;
+    if (isFirstObservation) {
+      // Cold start: the init effect above owns the first load.
+      return;
+    }
+    resetConversationListStore();
+    if (userId) {
+      refreshConversations();
+    }
+  }, [userId]);
 
   const {
     conversations,

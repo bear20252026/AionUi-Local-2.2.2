@@ -34,6 +34,10 @@ vi.mock('@/common', () => ({
 
 vi.mock('@/renderer/utils/emitter', () => ({ addEventListener: () => () => {} }));
 
+vi.mock('@/renderer/hooks/context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'test-user', username: 'tester' }, status: 'authenticated' }),
+}));
+
 import {
   reconcileGeneratingFromRuntime,
   useConversationListSync,
