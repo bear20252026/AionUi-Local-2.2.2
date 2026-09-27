@@ -729,6 +729,26 @@ async fn t9_3_refresh_missing_token() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
+/// The browser refresh path posts with no body at all (the HttpOnly cookie is
+/// the credential). Without a refresh cookie that used to surface as the JSON
+/// extractor's 415 Unsupported Media Type, which clients read as a broken
+/// endpoint instead of an expired session — it must be 401.
+#[tokio::test]
+async fn t9_4_refresh_without_cookie_or_body_is_unauthorized() {
+    let (app, _ctx) = test_app().await;
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/auth/refresh")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    let json = body_json(resp).await;
+    assert_eq!(json["code"], "UNAUTHORIZED");
+}
+
 #[tokio::test]
 async fn refresh_rejects_local_user_token_in_aionpro_mode() {
     let (app, ctx) = test_app_with_options_and_hook(false, Some("bootstrap-secret"), true, None).await;

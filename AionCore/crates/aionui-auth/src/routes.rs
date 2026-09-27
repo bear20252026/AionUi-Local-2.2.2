@@ -841,7 +841,20 @@ async fn refresh_handler(
     let (raw_token, from_cookie) = match extract_cookie_value(&headers, REFRESH_COOKIE_NAME) {
         Some(cookie_token) => (cookie_token, true),
         None => {
-            let Json(req) = body.map_err(ApiError::from)?;
+            // No refresh cookie: fall back to an explicit body token (legacy
+            // native clients). A 415 here means the caller sent no body at all
+            // (the browser path: cookie-only refresh) — there is simply no
+            // refresh credential, so answer 401 "logged out" instead of the
+            // JSON extractor's Unsupported Media Type, which clients cannot
+            // distinguish from a broken endpoint. Data/syntax errors in a
+            // present body keep their original status.
+            let Json(req) = body.map_err(|rejection| {
+                if rejection.status() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
+                    ApiError::Unauthorized("Missing refresh token".into())
+                } else {
+                    ApiError::from(rejection)
+                }
+            })?;
             (req.token, false)
         }
     };
