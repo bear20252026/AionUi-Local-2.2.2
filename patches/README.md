@@ -3,12 +3,32 @@
 CI（`../.github/workflows/build-*.yml`）**直接构建仓库内的 `AionUi/`、`AionCore/` 源码树**，本目录只是源码树相对上游 tag 的 diff 存档。改动源码树后必须同步重导出补丁：
 
 ```bash
-# 上游 clone（../..//AionUi、../../AionCore）现保持"tag + 全部补丁已应用"的镜像态，
-# 重导出 = 直接 git diff：
-git -C ../../AionCore diff > patches/aioncore-v0.2.2-no-login.patch    # 仅当 no-login 3 文件有变
-git -C ../../AionCore diff -- crates/aionui-api-types crates/aionui-app crates/aionui-system > patches/aioncore-v0.2.2-admin-api.patch
-git -C ../../AionUi   diff > patches/aionui-v2.2.2-multiuser.patch
+# 上游 clone（../../AionUi、../../AionCore）保持"tag + 全部补丁已应用"的镜像态，
+# 重导出 = 直接 git diff（新建文件需先 git add -N 才会进 diff）：
+git -C ../../AionCore add -N crates/aionui-system/tests/admin_routes.rs
+git -C ../../AionCore diff -- crates/aionui-ai-agent/src/factory/aionrs.rs \
+      crates/aionui-db/src/repository/provider.rs crates/aionui-db/src/repository/sqlite_provider.rs \
+  > patches/aioncore-v0.2.2-no-login.patch
+git -C ../../AionCore diff -- crates/ \
+      ':(exclude)crates/aionui-ai-agent/src/factory/aionrs.rs' \
+      ':(exclude)crates/aionui-db/src/repository/provider.rs' \
+      ':(exclude)crates/aionui-db/src/repository/sqlite_provider.rs' \
+  > patches/aioncore-v0.2.2-admin-api.patch
+git -C ../../AionUi add -N packages/desktop/src/renderer/admin.html \
+      packages/desktop/src/renderer/admin.tsx packages/desktop/src/renderer/pages/admin \
+      packages/desktop/src/renderer/services/i18n/locales/*/admin.json \
+      tests/unit/renderer/hooks/useConversationListSyncIdentity.dom.test.tsx
+git -C ../../AionUi diff > patches/aionui-v2.2.2-multiuser.patch
+
+# 校验（必须在干净 tag 上通过，再与 monorepo 逐文件比对）
+git -C ../../AionCore reset --hard && git -C ../../AionCore clean -fd
+git -C ../../AionCore apply --check patches/aioncore-v0.2.2-no-login.patch patches/aioncore-v0.2.2-admin-api.patch
+git -C ../../AionUi reset --hard && git -C ../../AionUi clean -fd
+git -C ../../AionUi apply --check patches/aionui-v2.2.2-multiuser.patch
 ```
+
+> monorepo 工作区是 **CRLF**、上游 clone 索引是 **LF**：把 monorepo 文件拷进 clone 做镜像时
+> 必须先转 LF（`sed -i 's/\r$//'`），否则整树都是假差异。
 
 > 若上游 clone 不是镜像态（`git -C ../../AionUi status` 不显示补丁改动），把 monorepo 源码树里
 > 的差异文件拷入 clone 工作区后再 diff。拷入的文本文件先 `sed -i 's/\r$//'` 转 LF。
@@ -18,8 +38,8 @@ git -C ../../AionUi   diff > patches/aionui-v2.2.2-multiuser.patch
 | 文件 | 上游基线 | 内容 | 用途 |
 |------|----------|------|------|
 | `aioncore-v0.2.2-no-login.patch` | iOfficeAI/AionCore v0.2.2 | provider `find_by_model` 回退（3 个文件）：trait 默认方法 + sqlite 实现（`WHERE enabled=1 AND user_id=?`，**严格限请求者本人**）+ aionrs 工厂回退 | 桌面 + 网页，必打 |
-| `aioncore-v0.2.2-admin-api.patch` | 同上（叠打在 no-login 之上） | Web 管理控制台后端（12 个文件）：`aionui-system/routes.rs` admin 用户/Provider 管理 API、`aionui-api-types`（auth.rs/lib.rs）类型、`aionui-app/router/state.rs` 装配、`tests/admin_routes.rs`（新增）及 8 个既有路由测试补 user repo 夹具 | 网页版多用户（管理控制台） |
-| `aionui-v2.2.2-multiuser.patch` | iOfficeAI/AionUi v2.2.2 | ① `web-host/backend-launcher.ts`：`--local` 硬编码改 `AIONUI_MULTIUSER` 开关（默认关 = 上游单用户）；② CSRF 双提交补齐（httpBridge 读 `aionui-csrf-token` cookie 给状态变更请求附 `x-csrf-token`，sessionRefresh/configService/AuthContext/FileService/SpeechToText 同步附头，含回归测试）；③ 浏览器登录门 + login 页多用户引导；④ Web 管理控制台前端：`renderer/admin.html/admin.tsx`、`pages/admin/`（AdminApp 等）、`/admin` 直出（web-host static-server + electron.vite 入口）、静态资源确定性缓存头；⑤ 控制台 13 语言 i18n（`locales/*/admin.json` + index.ts 注册 + i18n-keys.d.ts）；⑥ 切换账号清空会话列表防串号；⑦ 多用户首启密码失败告警（scripts/webui.ts、resetpass.ts） | 网页版多用户，必打 |
+| `aioncore-v0.2.2-admin-api.patch` | 同上（叠打在 no-login 之上） | Web 管理控制台后端（15 个文件）：`aionui-system/routes.rs` admin **用户管理 API（建号 / 重置密码 / 停用启用）** + Provider 管理 API、`aionui-api-types`（auth.rs/lib.rs）类型、`aionui-app/router/state.rs` 装配、`aionui-db/lib.rs` 导出 `User`、**`aionui-auth` 登录拒绝已停用账号**（routes.rs + tests/route_tests.rs）、`tests/admin_routes.rs`（新增）及 7 个既有路由测试补 user repo 夹具 | 网页版多用户（管理控制台） |
+| `aionui-v2.2.2-multiuser.patch` | iOfficeAI/AionUi v2.2.2 | ① `web-host/backend-launcher.ts`：`--local` 硬编码改 `AIONUI_MULTIUSER` 开关（默认关 = 上游单用户）；② CSRF 双提交补齐（httpBridge 读 `aionui-csrf-token` cookie 给状态变更请求附 `x-csrf-token`，sessionRefresh/configService/AuthContext/FileService/SpeechToText 同步附头，含回归测试）；③ 浏览器登录门 + login 页多用户引导；④ Web 管理控制台前端：`renderer/admin.html/admin.tsx`、`pages/admin/`（AdminApp 等）、`/admin` 直出（web-host static-server + electron.vite 入口）、静态资源确定性缓存头；⑤ 控制台 13 语言 i18n（`locales/*/admin.json` + index.ts 注册 + i18n-keys.d.ts）；⑥ 切换账号清空会话列表防串号；⑦ 多用户首启密码失败告警（scripts/webui.ts、resetpass.ts）；⑧ 控制台用户开通前端（新建用户 / 重置密码 / 停用启用对话框，`AdminApp.tsx`）；⑨ 侧栏"管理控制台"入口（`SiderFooter`/`Sider`，仅浏览器 WebUI 显示，文案 `common.adminConsole` ×13 语言） | 网页版多用户，必打 |
 | `aionui-v2.2.2-auth-bypass.patch` | iOfficeAI/AionUi v2.2.2 | `AuthContext.tsx` 硬编码 `isDesktopRuntime = true`（任何运行时不跳 /login） | **仅**"网页免登录"部署；与 multiuser 补丁**互斥**（都改 AuthContext.tsx），多用户部署**禁用** |
 
 行为速查：

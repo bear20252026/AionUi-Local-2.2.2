@@ -266,6 +266,98 @@ index 0000000..aaaa7c1
 +    <AdminApp />
 +  </ConfigProvider>
 +);
+diff --git a/packages/desktop/src/renderer/components/layout/Sider/SiderFooter.tsx b/packages/desktop/src/renderer/components/layout/Sider/SiderFooter.tsx
+index e6dc504..3d1cfa8 100644
+--- a/packages/desktop/src/renderer/components/layout/Sider/SiderFooter.tsx
++++ b/packages/desktop/src/renderer/components/layout/Sider/SiderFooter.tsx
+@@ -7,9 +7,10 @@
+ import React from 'react';
+ import { useTranslation } from 'react-i18next';
+ import { Tooltip } from '@arco-design/web-react';
+-import { ArrowCircleLeft, CloseOne, Moon, SettingTwo, SunOne } from '@icon-park/react';
++import { ArrowCircleLeft, CloseOne, Moon, SettingTwo, SunOne, UserBusiness } from '@icon-park/react';
+ import classNames from 'classnames';
+ import { iconColors } from '@renderer/styles/colors';
++import { cleanupSiderTooltips } from '@renderer/utils/ui/siderTooltip';
+ import type { SiderTooltipProps } from '@renderer/utils/ui/siderTooltip';
+ 
+ interface SiderFooterProps {
+@@ -22,6 +23,7 @@ interface SiderFooterProps {
+   onThemeToggle: () => void;
+   showLogout?: boolean;
+   onLogoutClick?: () => void;
++  showAdminConsole?: boolean;
+ }
+ 
+ const SiderFooter: React.FC<SiderFooterProps> = ({
+@@ -34,6 +36,7 @@ const SiderFooter: React.FC<SiderFooterProps> = ({
+   onThemeToggle,
+   showLogout = false,
+   onLogoutClick,
++  showAdminConsole = false,
+ }) => {
+   const { t } = useTranslation();
+ 
+@@ -79,6 +82,37 @@ const SiderFooter: React.FC<SiderFooterProps> = ({
+             </span>
+           </div>
+         </Tooltip>
++        {showAdminConsole && (
++          <Tooltip {...siderTooltipProps} content={t('common.adminConsole')} position='right'>
++            <div
++              onClick={() => {
++                window.location.assign('/admin');
++                // In desktop (electron) mode the entry is hidden entirely, so a plain
++                // assign to the in-app clean URL is safe. The admin console has its own
++                // identity gate: non-admin sessions get the forbidden screen there.
++                cleanupSiderTooltips();
++              }}
++              className={classNames(
++                'h-32px flex items-center rd-0.5rem cursor-pointer transition-colors hover:bg-[rgba(var(--primary-6),0.14)] active:bg-fill-2',
++                collapsed ? 'w-full justify-center' : 'flex-1 min-w-0 justify-start gap-10px px-14px',
++                isMobile && 'sider-footer-btn-mobile'
++              )}
++            >
++              <span className='size-20px flex items-center justify-center shrink-0'>
++                <UserBusiness
++                  theme='outline'
++                  size='16'
++                  fill={iconColors.primary}
++                  className='block leading-none'
++                  style={{ lineHeight: 0 }}
++                />
++              </span>
++              <span className='collapsed-hidden text-t-primary text-14px font-[500] leading-24px truncate'>
++                {t('common.adminConsole')}
++              </span>
++            </div>
++          </Tooltip>
++        )}
+         {showLogout && onLogoutClick && (
+           <Tooltip {...siderTooltipProps} content={t('settings.googleLogout')} position='right'>
+             <div
+diff --git a/packages/desktop/src/renderer/components/layout/Sider/index.tsx b/packages/desktop/src/renderer/components/layout/Sider/index.tsx
+index 5cabf35..1dc0767 100644
+--- a/packages/desktop/src/renderer/components/layout/Sider/index.tsx
++++ b/packages/desktop/src/renderer/components/layout/Sider/index.tsx
+@@ -35,6 +35,9 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
+   const lastNonSettingsPathRef = useRef('/guid');
+   const showLogout =
+     typeof window !== 'undefined' && !(window as { electronAPI?: unknown }).electronAPI && status === 'authenticated';
++  // The admin console only exists in browser WebUI mode (the /admin clean URL is
++  // served by web-host), so reuse the same visibility gate as the logout entry.
++  const showAdminConsole = showLogout;
+ 
+   useEffect(() => {
+     if (!pathname.startsWith('/settings')) {
+@@ -255,6 +258,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
+         onThemeToggle={handleQuickThemeToggle}
+         showLogout={showLogout}
+         onLogoutClick={handleLogout}
++        showAdminConsole={showAdminConsole}
+       />
+     </div>
+   );
 diff --git a/packages/desktop/src/renderer/hooks/context/AuthContext.tsx b/packages/desktop/src/renderer/hooks/context/AuthContext.tsx
 index 6e56c94..70f3673 100644
 --- a/packages/desktop/src/renderer/hooks/context/AuthContext.tsx
@@ -417,10 +509,10 @@ index 0000000..fc9a989
 +}
 diff --git a/packages/desktop/src/renderer/pages/admin/AdminApp.tsx b/packages/desktop/src/renderer/pages/admin/AdminApp.tsx
 new file mode 100644
-index 0000000..2907c24
+index 0000000..cc80283
 --- /dev/null
 +++ b/packages/desktop/src/renderer/pages/admin/AdminApp.tsx
-@@ -0,0 +1,567 @@
+@@ -0,0 +1,761 @@
 +/**
 + * @license
 + * Copyright 2025 AionUi (aionui.com)
@@ -487,6 +579,13 @@ index 0000000..2907c24
 +
 +type ProviderDraft = { mode: 'create'; userId: string } | { mode: 'edit'; userId: string; provider: Provider } | null;
 +
++type UserDraft = { mode: 'create' } | { mode: 'reset'; user: AdminUser } | null;
++
++type UserFormValues = {
++  username?: string;
++  password: string;
++};
++
 +const PLATFORM_OPTIONS = ['openai', 'anthropic', 'deepseek', 'gemini', 'moonshot', 'qwen', 'ollama', 'custom'].map(
 +  (value) => ({ value, label: value })
 +);
@@ -516,6 +615,8 @@ index 0000000..2907c24
 +  const [providersLoading, setProvidersLoading] = useState(false);
 +  const [draft, setDraft] = useState<ProviderDraft>(null);
 +  const [saving, setSaving] = useState(false);
++  const [userDraft, setUserDraft] = useState<UserDraft>(null);
++  const [userSaving, setUserSaving] = useState(false);
 +  const [pageError, setPageError] = useState<string | null>(null);
 +
 +  useEffect(() => {
@@ -692,6 +793,81 @@ index 0000000..2907c24
 +    }
 +  }, []);
 +
++  // Surface a failed account operation: gate errors take over the screen, a
++  // validation/conflict rejection (400/409) shows the backend's own reason
++  // (e.g. "Password must be at least 8 characters"), anything else is generic.
++  const showUserOpError = useCallback(
++    (error: unknown) => {
++      const status = statusOf(error);
++      if (status === 401 || status === 403) {
++        handleGateError(error);
++        if (status === 403) Message.error(t('admin.notice.forbidden'));
++        return;
++      }
++      const backend = error instanceof BackendHttpError ? error.backendMessage : '';
++      Message.error(backend || t('admin.message.userOpFailed'));
++    },
++    [handleGateError, t]
++  );
++
++  const submitUser = useCallback(
++    async (values: UserFormValues) => {
++      if (!userDraft) return;
++      setUserSaving(true);
++      try {
++        if (userDraft.mode === 'create') {
++          const created = await httpPost<AdminUser, { username: string; password: string }>('/api/admin/users').invoke({
++            username: values.username ?? '',
++            password: values.password,
++          });
++          Message.success(t('admin.message.userCreated'));
++          setUserDraft(null);
++          await loadUsers();
++          if (created?.id) setSelectedUserId(created.id);
++        } else {
++          await httpPut<AdminUser, { password: string }>(
++            `/api/admin/users/${encodeURIComponent(userDraft.user.id)}/password`
++          ).invoke({ password: values.password });
++          Message.success(t('admin.message.passwordReset'));
++          setUserDraft(null);
++        }
++      } catch (error) {
++        showUserOpError(error);
++      } finally {
++        setUserSaving(false);
++      }
++    },
++    [loadUsers, showUserOpError, t, userDraft]
++  );
++
++  const setUserStatus = useCallback(
++    (user: AdminUser, next: 'active' | 'disabled') => {
++      const name = user.username || user.id;
++      Modal.confirm({
++        title: next === 'disabled' ? t('admin.userDialog.disableTitle') : t('admin.userDialog.enableTitle'),
++        content:
++          next === 'disabled'
++            ? t('admin.userDialog.disableContent', { name })
++            : t('admin.userDialog.enableContent', { name }),
++        okText: t('admin.userDialog.ok'),
++        cancelText: t('admin.modal.cancel'),
++        okButtonProps: next === 'disabled' ? { status: 'danger' } : undefined,
++        onOk: async () => {
++          try {
++            await httpPut<AdminUser, { status: string }>(
++              `/api/admin/users/${encodeURIComponent(user.id)}/status`
++            ).invoke({ status: next });
++            Message.success(t('admin.message.statusChanged'));
++            await loadUsers();
++          } catch (error) {
++            showUserOpError(error);
++          }
++        },
++      });
++    },
++    [loadUsers, showUserOpError, t]
++  );
++
 +  if (gate === 'loading') {
 +    return <Centered notice={t('admin.gate.loading')} />;
 +  }
@@ -746,6 +922,26 @@ index 0000000..2907c24
 +      title: t('admin.users.lastLogin'),
 +      dataIndex: 'last_login',
 +      render: (value: number | null) => formatTime(value),
++    },
++    {
++      title: t('admin.users.actions'),
++      width: 190,
++      render: (_: unknown, record: AdminUser) => (
++        <Space size={4}>
++          <Button size='mini' onClick={() => setUserDraft({ mode: 'reset', user: record })}>
++            {t('admin.users.resetPassword')}
++          </Button>
++          {record.is_primary ? null : record.status === 'active' ? (
++            <Button size='mini' status='danger' onClick={() => setUserStatus(record, 'disabled')}>
++              {t('admin.users.disable')}
++            </Button>
++          ) : (
++            <Button size='mini' status='success' onClick={() => setUserStatus(record, 'active')}>
++              {t('admin.users.enable')}
++            </Button>
++          )}
++        </Space>
++      ),
 +    },
 +  ];
 +
@@ -814,9 +1010,14 @@ index 0000000..2907c24
 +          title={t('admin.users.title')}
 +          bordered={false}
 +          extra={
-+            <Button size='mini' onClick={() => void loadUsers()}>
-+              {t('admin.users.refresh')}
-+            </Button>
++            <Space size={8}>
++              <Button size='mini' type='primary' onClick={() => setUserDraft({ mode: 'create' })}>
++                {t('admin.users.createUser')}
++              </Button>
++              <Button size='mini' onClick={() => void loadUsers()}>
++                {t('admin.users.refresh')}
++              </Button>
++            </Space>
 +          }
 +        >
 +          <Table
@@ -878,6 +1079,13 @@ index 0000000..2907c24
 +        ownerLabel={selectedUser?.username ?? ''}
 +        onCancel={() => setDraft(null)}
 +        onSubmit={saveProvider}
++      />
++
++      <UserModal
++        draft={userDraft}
++        saving={userSaving}
++        onCancel={() => setUserDraft(null)}
++        onSubmit={submitUser}
 +      />
 +    </div>
 +  );
@@ -966,6 +1174,84 @@ index 0000000..2907c24
 +        </Form.Item>
 +        <Form.Item label={t('admin.providers.enabled')} field='enabled' triggerPropName='checked'>
 +          <Switch />
++        </Form.Item>
++      </Form>
++    </Modal>
++  );
++}
++
++// ---------------------------------------------------------------------------
++// Create user / reset password dialog
++// ---------------------------------------------------------------------------
++
++const USERNAME_PATTERN = /^[a-zA-Z0-9_-]{3,32}$/;
++const USERNAME_EDGES_PATTERN = /^[-_]|[-_]$/;
++
++function UserModal(props: {
++  draft: UserDraft;
++  saving: boolean;
++  onCancel: () => void;
++  onSubmit: (values: UserFormValues) => Promise<void>;
++}) {
++  const { t } = useTranslation();
++  const { draft, saving, onCancel, onSubmit } = props;
++  const [form] = Form.useForm<UserFormValues>();
++
++  useEffect(() => {
++    if (draft) form.resetFields();
++  }, [draft, form]);
++
++  if (!draft) return null;
++  const isCreate = draft.mode === 'create';
++
++  return (
++    <Modal
++      visible
++      title={
++        isCreate
++          ? t('admin.userModal.createTitle')
++          : t('admin.userModal.resetTitle', { name: draft.user.username || draft.user.id })
++      }
++      okText={isCreate ? t('admin.userModal.okCreate') : t('admin.userModal.okReset')}
++      cancelText={t('admin.modal.cancel')}
++      confirmLoading={saving}
++      onCancel={onCancel}
++      onOk={() => {
++        void form.validate().then((values) => onSubmit(values));
++      }}
++      autoFocus={false}
++      focusLock
++    >
++      <Form form={form} layout='vertical'>
++        {isCreate && (
++          <Form.Item
++            label={t('admin.userModal.username')}
++            field='username'
++            rules={[
++              { required: true, message: t('admin.userModal.usernameRequired') },
++              {
++                validator: (value: string, callback: (message?: string) => void) =>
++                  callback(
++                    !USERNAME_PATTERN.test(value || '') || USERNAME_EDGES_PATTERN.test(value || '')
++                      ? t('admin.userModal.usernameInvalid')
++                      : undefined
++                  ),
++              },
++            ]}
++          >
++            <Input placeholder={t('admin.userModal.usernamePlaceholder')} />
++          </Form.Item>
++        )}
++        <Form.Item
++          label={t('admin.userModal.password')}
++          field='password'
++          rules={[
++            { required: true, message: t('admin.userModal.passwordRequired') },
++            { minLength: 8, message: t('admin.userModal.passwordInvalid') },
++          ]}
++          extra={isCreate ? t('admin.userModal.passwordHint') : undefined}
++        >
++          <Input.Password placeholder={t('admin.userModal.passwordPlaceholder')} />
 +        </Form.Item>
 +      </Form>
 +    </Modal>
@@ -1150,10 +1436,10 @@ index 3ab4842..45d7abb 100644
      xhr.addEventListener('load', () => {
        if (xhr.status < 200 || xhr.status >= 300) {
 diff --git a/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts b/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts
-index 677ae71..b55d74c 100644
+index 677ae71..c268910 100644
 --- a/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts
 +++ b/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts
-@@ -23,6 +23,66 @@ export type I18nKey =
+@@ -23,6 +23,93 @@ export type I18nKey =
    | 'acp.status.error'
    | 'acp.status.session_active'
    | 'acp.status.unknown'
@@ -1169,7 +1455,11 @@ index 677ae71..b55d74c 100644
 +  | 'admin.gate.loading'
 +  | 'admin.message.created'
 +  | 'admin.message.deleted'
++  | 'admin.message.passwordReset'
++  | 'admin.message.statusChanged'
 +  | 'admin.message.updated'
++  | 'admin.message.userCreated'
++  | 'admin.message.userOpFailed'
 +  | 'admin.modal.apiKeyHint'
 +  | 'admin.modal.apiKeyPlaceholder'
 +  | 'admin.modal.apiKeyRequired'
@@ -1208,19 +1498,50 @@ index 677ae71..b55d74c 100644
 +  | 'admin.topbar.backToApp'
 +  | 'admin.topbar.defaultUser'
 +  | 'admin.topbar.logout'
++  | 'admin.userDialog.disableContent'
++  | 'admin.userDialog.disableTitle'
++  | 'admin.userDialog.enableContent'
++  | 'admin.userDialog.enableTitle'
++  | 'admin.userDialog.ok'
++  | 'admin.userModal.createTitle'
++  | 'admin.userModal.okCreate'
++  | 'admin.userModal.okReset'
++  | 'admin.userModal.password'
++  | 'admin.userModal.passwordHint'
++  | 'admin.userModal.passwordInvalid'
++  | 'admin.userModal.passwordPlaceholder'
++  | 'admin.userModal.passwordRequired'
++  | 'admin.userModal.resetTitle'
++  | 'admin.userModal.username'
++  | 'admin.userModal.usernameInvalid'
++  | 'admin.userModal.usernamePlaceholder'
++  | 'admin.userModal.usernameRequired'
 +  | 'admin.users.account'
++  | 'admin.users.actions'
 +  | 'admin.users.active'
 +  | 'admin.users.adminTag'
++  | 'admin.users.createUser'
++  | 'admin.users.disable'
 +  | 'admin.users.disabled'
 +  | 'admin.users.empty'
++  | 'admin.users.enable'
 +  | 'admin.users.lastLogin'
 +  | 'admin.users.refresh'
++  | 'admin.users.resetPassword'
 +  | 'admin.users.status'
 +  | 'admin.users.title'
    | 'agent.config.busy'
    | 'agent.config.commandAck'
    | 'agent.config.failed'
-@@ -3054,4 +3114,5 @@ export type I18nModule =
+@@ -185,6 +272,7 @@ export type I18nKey =
+   | 'common.about'
+   | 'common.add'
+   | 'common.added'
++  | 'common.adminConsole'
+   | 'common.agentMode'
+   | 'common.aiAssistant'
+   | 'common.back'
+@@ -3054,4 +3142,5 @@ export type I18nModule =
    | 'guid'
    | 'agent'
    | 'team'
@@ -1229,10 +1550,10 @@ index 677ae71..b55d74c 100644
 +  | 'admin';
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/de-DE/admin.json b/packages/desktop/src/renderer/services/i18n/locales/de-DE/admin.json
 new file mode 100644
-index 0000000..ddb62bd
+index 0000000..0bc9034
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/de-DE/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -1266,7 +1587,12 @@ index 0000000..ddb62bd
 +    "adminTag": "Administrator",
 +    "active": "Aktiv",
 +    "disabled": "Deaktiviert",
-+    "empty": "Keine Benutzer"
++    "empty": "Keine Benutzer",
++    "createUser": "Benutzer erstellen",
++    "resetPassword": "Passwort zurücksetzen",
++    "disable": "Deaktivieren",
++    "enable": "Aktivieren",
++    "actions": "Aktionen"
 +  },
 +  "providers": {
 +    "title": "Modell-Anbieter",
@@ -1310,9 +1636,47 @@ index 0000000..ddb62bd
 +  "message": {
 +    "created": "Modell-Anbieter erstellt",
 +    "updated": "Modell-Anbieter aktualisiert",
-+    "deleted": "Gelöscht"
++    "deleted": "Gelöscht",
++    "userCreated": "Benutzer erstellt",
++    "passwordReset": "Passwort zurückgesetzt — Sitzungen wurden abgemeldet",
++    "statusChanged": "Status aktualisiert",
++    "userOpFailed": "Vorgang fehlgeschlagen."
++  },
++  "userModal": {
++    "createTitle": "Benutzer erstellen",
++    "okCreate": "Erstellen",
++    "resetTitle": "Passwort zurücksetzen · {{name}}",
++    "okReset": "Zurücksetzen",
++    "username": "Benutzername",
++    "usernamePlaceholder": "3–32 Zeichen: Buchstaben, Ziffern, - oder _",
++    "usernameRequired": "Bitte Benutzernamen eingeben",
++    "usernameInvalid": "Nur Buchstaben, Ziffern, - und _; 3–32 Zeichen; nicht mit - oder _ beginnend oder endend",
++    "password": "Passwort",
++    "passwordPlaceholder": "Mindestens 8 Zeichen",
++    "passwordRequired": "Bitte Passwort eingeben",
++    "passwordInvalid": "Mindestens 8 Zeichen",
++    "passwordHint": "Mindestens 8 Zeichen. Teilen Sie es dem Benutzer danach mit."
++  },
++  "userDialog": {
++    "disableTitle": "Konto deaktivieren",
++    "disableContent": "„{{name}}\" wirklich deaktivieren? Alle Sitzungen werden sofort abgemeldet.",
++    "enableTitle": "Konto aktivieren",
++    "enableContent": "Anmeldung für „{{name}}\" wieder erlauben?",
++    "ok": "Bestätigen"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/de-DE/common.json b/packages/desktop/src/renderer/services/i18n/locales/de-DE/common.json
+index 6ccdd02..bac7870 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/de-DE/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/de-DE/common.json
+@@ -11,6 +11,7 @@
+   "skills": "Skills",
+   "workspace": "Arbeitsbereich",
+   "settings": "Einstellungen",
++  "adminConsole": "Admin-Konsole",
+   "system": "System",
+   "about": "Über uns",
+   "back": "Zurück zum Chat",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/de-DE/index.ts b/packages/desktop/src/renderer/services/i18n/locales/de-DE/index.ts
 index ee5c97e..7c75a4b 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/de-DE/index.ts
@@ -1333,10 +1697,10 @@ index ee5c97e..7c75a4b 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/en-US/admin.json b/packages/desktop/src/renderer/services/i18n/locales/en-US/admin.json
 new file mode 100644
-index 0000000..58a21a6
+index 0000000..6cc9334
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/en-US/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -1370,7 +1734,12 @@ index 0000000..58a21a6
 +    "adminTag": "Admin",
 +    "active": "Active",
 +    "disabled": "Disabled",
-+    "empty": "No users"
++    "empty": "No users",
++    "createUser": "Create user",
++    "resetPassword": "Reset password",
++    "disable": "Disable",
++    "enable": "Enable",
++    "actions": "Actions"
 +  },
 +  "providers": {
 +    "title": "Model Providers",
@@ -1414,9 +1783,47 @@ index 0000000..58a21a6
 +  "message": {
 +    "created": "Model provider created",
 +    "updated": "Model provider updated",
-+    "deleted": "Deleted"
++    "deleted": "Deleted",
++    "userCreated": "User created",
++    "passwordReset": "Password reset — their sessions were signed out",
++    "statusChanged": "Status updated",
++    "userOpFailed": "Operation failed."
++  },
++  "userModal": {
++    "createTitle": "Create user",
++    "okCreate": "Create",
++    "resetTitle": "Reset password · {{name}}",
++    "okReset": "Reset",
++    "username": "Username",
++    "usernamePlaceholder": "Letters, digits, - or _ (3–32 chars)",
++    "usernameRequired": "Please enter a username",
++    "usernameInvalid": "Letters, digits, - and _ only; 3–32 chars; cannot start or end with - or _",
++    "password": "Password",
++    "passwordPlaceholder": "At least 8 characters",
++    "passwordRequired": "Please enter a password",
++    "passwordInvalid": "At least 8 characters",
++    "passwordHint": "At least 8 characters. Share it with the user after creating."
++  },
++  "userDialog": {
++    "disableTitle": "Disable account",
++    "disableContent": "Disable \"{{name}}\"? All their login sessions will be signed out immediately.",
++    "enableTitle": "Enable account",
++    "enableContent": "Restore login for \"{{name}}\"?",
++    "ok": "Confirm"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/en-US/common.json b/packages/desktop/src/renderer/services/i18n/locales/en-US/common.json
+index 509d838..2ad3e11 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/en-US/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/en-US/common.json
+@@ -11,6 +11,7 @@
+   "skills": "Skills",
+   "workspace": "Project",
+   "settings": "Settings",
++  "adminConsole": "Admin Console",
+   "system": "System",
+   "about": "About Us",
+   "back": "Back to Chat",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/en-US/index.ts b/packages/desktop/src/renderer/services/i18n/locales/en-US/index.ts
 index 9bd9747..6a12e45 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/en-US/index.ts
@@ -1437,10 +1844,10 @@ index 9bd9747..6a12e45 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/es-ES/admin.json b/packages/desktop/src/renderer/services/i18n/locales/es-ES/admin.json
 new file mode 100644
-index 0000000..e14b66b
+index 0000000..83247ea
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/es-ES/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -1474,7 +1881,12 @@ index 0000000..e14b66b
 +    "adminTag": "Administrador",
 +    "active": "Activo",
 +    "disabled": "Inactivo",
-+    "empty": "No hay usuarios"
++    "empty": "No hay usuarios",
++    "createUser": "Crear usuario",
++    "resetPassword": "Restablecer contraseña",
++    "disable": "Desactivar",
++    "enable": "Activar",
++    "actions": "Acciones"
 +  },
 +  "providers": {
 +    "title": "Proveedores de modelos",
@@ -1518,9 +1930,47 @@ index 0000000..e14b66b
 +  "message": {
 +    "created": "Proveedor de modelos creado",
 +    "updated": "Proveedor de modelos actualizado",
-+    "deleted": "Eliminado"
++    "deleted": "Eliminado",
++    "userCreated": "Usuario creado",
++    "passwordReset": "Contraseña restablecida; sus sesiones se cerraron",
++    "statusChanged": "Estado actualizado",
++    "userOpFailed": "Error en la operación."
++  },
++  "userModal": {
++    "createTitle": "Crear usuario",
++    "okCreate": "Crear",
++    "resetTitle": "Restablecer contraseña · {{name}}",
++    "okReset": "Restablecer",
++    "username": "Nombre de usuario",
++    "usernamePlaceholder": "3–32 caracteres: letras, dígitos, - o _",
++    "usernameRequired": "Introduce el nombre de usuario",
++    "usernameInvalid": "Solo letras, dígitos, - y _; 3–32 caracteres; sin empezar o terminar con - o _",
++    "password": "Contraseña",
++    "passwordPlaceholder": "Al menos 8 caracteres",
++    "passwordRequired": "Introduce la contraseña",
++    "passwordInvalid": "Al menos 8 caracteres",
++    "passwordHint": "Al menos 8 caracteres. Comunícasela al usuario después de crearlo."
++  },
++  "userDialog": {
++    "disableTitle": "Desactivar cuenta",
++    "disableContent": "¿Desactivar a «{{name}}»? Todas sus sesiones se cerrarán de inmediato.",
++    "enableTitle": "Activar cuenta",
++    "enableContent": "¿Restaurar el acceso de «{{name}}»?",
++    "ok": "Confirmar"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/es-ES/common.json b/packages/desktop/src/renderer/services/i18n/locales/es-ES/common.json
+index 2571f63..85e8eb2 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/es-ES/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/es-ES/common.json
+@@ -11,6 +11,7 @@
+   "skills": "Habilidades",
+   "workspace": "Proyecto",
+   "settings": "Configuración",
++  "adminConsole": "Consola de administración",
+   "system": "Sistema",
+   "about": "Acerca de",
+   "back": "Volver al chat",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/es-ES/index.ts b/packages/desktop/src/renderer/services/i18n/locales/es-ES/index.ts
 index 27d5c16..3457557 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/es-ES/index.ts
@@ -1541,10 +1991,10 @@ index 27d5c16..3457557 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/admin.json b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/admin.json
 new file mode 100644
-index 0000000..f8cd0c6
+index 0000000..eea4a40
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -1578,7 +2028,12 @@ index 0000000..f8cd0c6
 +    "adminTag": "مدیر",
 +    "active": "فعال",
 +    "disabled": "غیرفعال",
-+    "empty": "بدون کاربر"
++    "empty": "بدون کاربر",
++    "createUser": "ایجاد کاربر",
++    "resetPassword": "بازنشانی گذرواژه",
++    "disable": "غیرفعال",
++    "enable": "فعال",
++    "actions": "عملیات"
 +  },
 +  "providers": {
 +    "title": "ارائه‌دهندگان مدل",
@@ -1622,9 +2077,47 @@ index 0000000..f8cd0c6
 +  "message": {
 +    "created": "ارائه‌دهنده مدل ایجاد شد",
 +    "updated": "ارائه‌دهنده مدل به‌روزرسانی شد",
-+    "deleted": "حذف شد"
++    "deleted": "حذف شد",
++    "userCreated": "کاربر ایجاد شد",
++    "passwordReset": "گذرواژه بازنشانی شد؛ نشست‌ها خارج شدند",
++    "statusChanged": "وضعیت به‌روزرسانی شد",
++    "userOpFailed": "عملیات ناموفق بود."
++  },
++  "userModal": {
++    "createTitle": "ایجاد کاربر",
++    "okCreate": "ایجاد",
++    "resetTitle": "بازنشانی گذرواژه · {{name}}",
++    "okReset": "بازنشانی",
++    "username": "نام کاربری",
++    "usernamePlaceholder": "۳ تا ۳۲ نویسه: حروف، رقم، - یا _",
++    "usernameRequired": "نام کاربری را وارد کنید",
++    "usernameInvalid": "فقط حروف، رقم، - و _؛ ۳ تا ۳۲ نویسه؛ با - یا _ شروع یا پایان نگیرد",
++    "password": "گذرواژه",
++    "passwordPlaceholder": "دست‌کم ۸ نویسه",
++    "passwordRequired": "گذرواژه را وارد کنید",
++    "passwordInvalid": "دست‌کم ۸ نویسه",
++    "passwordHint": "دست‌کم ۸ نویسه؛ پس از ایجاد با کاربر در میان بگذارید."
++  },
++  "userDialog": {
++    "disableTitle": "غیرفعال‌کردن حساب",
++    "disableContent": "«{{name}}» غیرفعال شود؟ همه نشست‌های ورود او بلافاصله خارج می‌شود.",
++    "enableTitle": "فعال‌کردن حساب",
++    "enableContent": "ورود «{{name}}» برقرار شود؟",
++    "ok": "تأیید"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/common.json b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/common.json
+index 95f3bf0..186ef7e 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/common.json
+@@ -11,6 +11,7 @@
+   "skills": "مهارت‌ها",
+   "workspace": "پروژه",
+   "settings": "تنظیمات",
++  "adminConsole": "کنسول مدیریت",
+   "system": "سیستم",
+   "about": "درباره ما",
+   "back": "بازگشت به چت",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/index.ts
 index 68d075d..29bd748 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/index.ts
@@ -1645,10 +2138,10 @@ index 68d075d..29bd748 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/admin.json b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/admin.json
 new file mode 100644
-index 0000000..881fe72
+index 0000000..a51a1b3
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -1682,7 +2175,12 @@ index 0000000..881fe72
 +    "adminTag": "Administrateur",
 +    "active": "Actif",
 +    "disabled": "Désactivé",
-+    "empty": "Aucun utilisateur"
++    "empty": "Aucun utilisateur",
++    "createUser": "Créer un utilisateur",
++    "resetPassword": "Réinitialiser le mot de passe",
++    "disable": "Désactiver",
++    "enable": "Activer",
++    "actions": "Actions"
 +  },
 +  "providers": {
 +    "title": "Fournisseurs de modèles",
@@ -1726,9 +2224,47 @@ index 0000000..881fe72
 +  "message": {
 +    "created": "Fournisseur de modèles créé",
 +    "updated": "Fournisseur de modèles mis à jour",
-+    "deleted": "Supprimé"
++    "deleted": "Supprimé",
++    "userCreated": "Utilisateur créé",
++    "passwordReset": "Mot de passe réinitialisé — sessions déconnectées",
++    "statusChanged": "Statut mis à jour",
++    "userOpFailed": "Échec de l'opération."
++  },
++  "userModal": {
++    "createTitle": "Créer un utilisateur",
++    "okCreate": "Créer",
++    "resetTitle": "Réinitialiser le mot de passe · {{name}}",
++    "okReset": "Réinitialiser",
++    "username": "Nom d'utilisateur",
++    "usernamePlaceholder": "3–32 caractères : lettres, chiffres, - ou _",
++    "usernameRequired": "Saisissez le nom d'utilisateur",
++    "usernameInvalid": "Lettres, chiffres, - et _ uniquement ; 3–32 caractères ; ne commence ni ne finit par - ou _",
++    "password": "Mot de passe",
++    "passwordPlaceholder": "Au moins 8 caractères",
++    "passwordRequired": "Saisissez le mot de passe",
++    "passwordInvalid": "Au moins 8 caractères",
++    "passwordHint": "Au moins 8 caractères. Communiquez-le à l'utilisateur ensuite."
++  },
++  "userDialog": {
++    "disableTitle": "Désactiver le compte",
++    "disableContent": "Désactiver « {{name}} » ? Toutes ses sessions seront déconnectées immédiatement.",
++    "enableTitle": "Activer le compte",
++    "enableContent": "Réactiver l'accès de « {{name}} » ?",
++    "ok": "Confirmer"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/common.json b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/common.json
+index a2f11bc..13e0072 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/common.json
+@@ -11,6 +11,7 @@
+   "skills": "Compétences",
+   "workspace": "Espace de travail",
+   "settings": "Paramètres",
++  "adminConsole": "Console d’administration",
+   "system": "Système",
+   "about": "À propos",
+   "back": "Retour au chat",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/index.ts
 index 76e364a..1535379 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/index.ts
@@ -1749,10 +2285,10 @@ index 76e364a..1535379 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/admin.json b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/admin.json
 new file mode 100644
-index 0000000..06592b7
+index 0000000..32fe9a1
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -1786,7 +2322,12 @@ index 0000000..06592b7
 +    "adminTag": "管理者",
 +    "active": "有効",
 +    "disabled": "無効",
-+    "empty": "ユーザーがありません"
++    "empty": "ユーザーがありません",
++    "createUser": "ユーザー作成",
++    "resetPassword": "パスワード再設定",
++    "disable": "無効化",
++    "enable": "有効化",
++    "actions": "操作"
 +  },
 +  "providers": {
 +    "title": "モデルプロバイダー",
@@ -1830,9 +2371,47 @@ index 0000000..06592b7
 +  "message": {
 +    "created": "モデルプロバイダーを作成しました",
 +    "updated": "モデルプロバイダーを更新しました",
-+    "deleted": "削除しました"
++    "deleted": "削除しました",
++    "userCreated": "ユーザーを作成しました",
++    "passwordReset": "パスワードを再設定しました（ログインは全て無効化）",
++    "statusChanged": "ステータスを更新しました",
++    "userOpFailed": "操作に失敗しました。"
++  },
++  "userModal": {
++    "createTitle": "ユーザー作成",
++    "okCreate": "作成",
++    "resetTitle": "パスワード再設定 · {{name}}",
++    "okReset": "再設定",
++    "username": "ユーザー名",
++    "usernamePlaceholder": "3〜32文字：英数字、-、_",
++    "usernameRequired": "ユーザー名を入力してください",
++    "usernameInvalid": "英数字、-、_ のみ（3〜32文字、先頭と末尾に - _ は不可）",
++    "password": "パスワード",
++    "passwordPlaceholder": "8文字以上",
++    "passwordRequired": "パスワードを入力してください",
++    "passwordInvalid": "8文字以上",
++    "passwordHint": "8文字以上。作成後にユーザーへお知らせください。"
++  },
++  "userDialog": {
++    "disableTitle": "アカウント無効化",
++    "disableContent": "「{{name}}」を無効化しますか？すべてのログインは即座に無効になります。",
++    "enableTitle": "アカウント有効化",
++    "enableContent": "「{{name}}」のログインを復帰させますか？",
++    "ok": "確認"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/common.json b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/common.json
+index 4125565..6600b95 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/common.json
+@@ -11,6 +11,7 @@
+   "skills": "スキル",
+   "workspace": "プロジェクト",
+   "settings": "設定",
++  "adminConsole": "管理コンソール",
+   "system": "システム",
+   "about": "私たちについて",
+   "back": "チャットに戻る",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/index.ts b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/index.ts
 index 0654712..ce3be9e 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/index.ts
@@ -1853,10 +2432,10 @@ index 0654712..ce3be9e 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/admin.json b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/admin.json
 new file mode 100644
-index 0000000..a877480
+index 0000000..754b475
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -1890,7 +2469,12 @@ index 0000000..a877480
 +    "adminTag": "관리자",
 +    "active": "활성",
 +    "disabled": "비활성",
-+    "empty": "사용자가 없습니다"
++    "empty": "사용자가 없습니다",
++    "createUser": "사용자 추가",
++    "resetPassword": "비밀번호 재설정",
++    "disable": "비활성화",
++    "enable": "활성화",
++    "actions": "작업"
 +  },
 +  "providers": {
 +    "title": "모델 프로바이더",
@@ -1934,9 +2518,47 @@ index 0000000..a877480
 +  "message": {
 +    "created": "모델 프로바이더를 만들었습니다",
 +    "updated": "모델 프로바이더를 업데이트했습니다",
-+    "deleted": "삭제했습니다"
++    "deleted": "삭제했습니다",
++    "userCreated": "사용자가 생성되었습니다",
++    "passwordReset": "비밀번호가 재설정되어 로그인이 모두 종료되었습니다",
++    "statusChanged": "상태가 업데이트되었습니다",
++    "userOpFailed": "작업에 실패했습니다."
++  },
++  "userModal": {
++    "createTitle": "사용자 추가",
++    "okCreate": "추가",
++    "resetTitle": "비밀번호 재설정 · {{name}}",
++    "okReset": "재설정",
++    "username": "사용자 이름",
++    "usernamePlaceholder": "3–32자: 영문, 숫자, -, _",
++    "usernameRequired": "사용자 이름을 입력하세요",
++    "usernameInvalid": "영문, 숫자, -, _만 가능(3–32자, 시작/끝에 - _ 불가)",
++    "password": "비밀번호",
++    "passwordPlaceholder": "8자 이상",
++    "passwordRequired": "비밀번호를 입력하세요",
++    "passwordInvalid": "8자 이상",
++    "passwordHint": "8자 이상. 생성 후 사용자에게 알려 주세요."
++  },
++  "userDialog": {
++    "disableTitle": "계정 비활성화",
++    "disableContent": "\"{{name}}\"을(를) 비활성화할까요? 모든 로그인 세션이 즉시 종료됩니다.",
++    "enableTitle": "계정 활성화",
++    "enableContent": "\"{{name}}\"의 로그인을 복원할까요?",
++    "ok": "확인"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/common.json b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/common.json
+index 4a35f8a..4d972e9 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/common.json
+@@ -11,6 +11,7 @@
+   "skills": "스킬",
+   "workspace": "프로젝트",
+   "settings": "설정",
++  "adminConsole": "관리 콘솔",
+   "system": "시스템",
+   "about": "소개",
+   "back": "채팅으로 돌아가기",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/index.ts
 index 0654712..ce3be9e 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/index.ts
@@ -1957,10 +2579,10 @@ index 0654712..ce3be9e 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/admin.json b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/admin.json
 new file mode 100644
-index 0000000..abdb489
+index 0000000..37d1149
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -1994,7 +2616,12 @@ index 0000000..abdb489
 +    "adminTag": "Administrador",
 +    "active": "Ativo",
 +    "disabled": "Inativo",
-+    "empty": "Nenhum usuário"
++    "empty": "Nenhum usuário",
++    "createUser": "Criar usuário",
++    "resetPassword": "Redefinir senha",
++    "disable": "Desativar",
++    "enable": "Ativar",
++    "actions": "Ações"
 +  },
 +  "providers": {
 +    "title": "Provedores de modelos",
@@ -2038,9 +2665,47 @@ index 0000000..abdb489
 +  "message": {
 +    "created": "Provedor de modelos criado",
 +    "updated": "Provedor de modelos atualizado",
-+    "deleted": "Excluído"
++    "deleted": "Excluído",
++    "userCreated": "Usuário criado",
++    "passwordReset": "Senha redefinida — sessões encerradas",
++    "statusChanged": "Status atualizado",
++    "userOpFailed": "Falha na operação."
++  },
++  "userModal": {
++    "createTitle": "Criar usuário",
++    "okCreate": "Criar",
++    "resetTitle": "Redefinir senha · {{name}}",
++    "okReset": "Redefinir",
++    "username": "Nome de usuário",
++    "usernamePlaceholder": "3–32 caracteres: letras, dígitos, - ou _",
++    "usernameRequired": "Digite o nome de usuário",
++    "usernameInvalid": "Apenas letras, dígitos, - e _; 3–32 caracteres; sem começar ou terminar com - ou _",
++    "password": "Senha",
++    "passwordPlaceholder": "Pelo menos 8 caracteres",
++    "passwordRequired": "Digite a senha",
++    "passwordInvalid": "Pelo menos 8 caracteres",
++    "passwordHint": "Pelo menos 8 caracteres. Informe ao usuário após criar."
++  },
++  "userDialog": {
++    "disableTitle": "Desativar conta",
++    "disableContent": "Desativar \"{{name}}\"? Todas as sessões serão encerradas imediatamente.",
++    "enableTitle": "Ativar conta",
++    "enableContent": "Restaurar o acesso de \"{{name}}\"?",
++    "ok": "Confirmar"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/common.json b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/common.json
+index feb0615..41457f6 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/common.json
+@@ -11,6 +11,7 @@
+   "skills": "Habilidades",
+   "workspace": "Projeto",
+   "settings": "Configurações",
++  "adminConsole": "Console de administração",
+   "system": "Sistema",
+   "about": "Sobre Nós",
+   "back": "Voltar ao Chat",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/index.ts
 index bc16b1f..ba384c2 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/index.ts
@@ -2061,10 +2726,10 @@ index bc16b1f..ba384c2 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/admin.json b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/admin.json
 new file mode 100644
-index 0000000..4a21145
+index 0000000..72c723d
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -2098,7 +2763,12 @@ index 0000000..4a21145
 +    "adminTag": "Администратор",
 +    "active": "Активен",
 +    "disabled": "Отключён",
-+    "empty": "Пользователей нет"
++    "empty": "Пользователей нет",
++    "createUser": "Создать пользователя",
++    "resetPassword": "Сбросить пароль",
++    "disable": "Отключить",
++    "enable": "Включить",
++    "actions": "Действия"
 +  },
 +  "providers": {
 +    "title": "Модели-провайдеры",
@@ -2142,9 +2812,47 @@ index 0000000..4a21145
 +  "message": {
 +    "created": "Модели-провайдер создан",
 +    "updated": "Модели-провайдер обновлён",
-+    "deleted": "Удалено"
++    "deleted": "Удалено",
++    "userCreated": "Пользователь создан",
++    "passwordReset": "Пароль сброшен — сеансы завершены",
++    "statusChanged": "Статус обновлён",
++    "userOpFailed": "Не удалось выполнить операцию."
++  },
++  "userModal": {
++    "createTitle": "Создать пользователя",
++    "okCreate": "Создать",
++    "resetTitle": "Сброс пароля · {{name}}",
++    "okReset": "Сбросить",
++    "username": "Имя пользователя",
++    "usernamePlaceholder": "3–32 символа: буквы, цифры, - или _",
++    "usernameRequired": "Введите имя пользователя",
++    "usernameInvalid": "Только буквы, цифры, - и _; 3–32 символа; не начинается и не заканчивается на - или _",
++    "password": "Пароль",
++    "passwordPlaceholder": "Не менее 8 символов",
++    "passwordRequired": "Введите пароль",
++    "passwordInvalid": "Не менее 8 символов",
++    "passwordHint": "Не менее 8 символов. Сообщите его пользователю после создания."
++  },
++  "userDialog": {
++    "disableTitle": "Отключить учётную запись",
++    "disableContent": "Отключить «{{name}}»? Все его сеансы будут немедленно завершены.",
++    "enableTitle": "Включить учётную запись",
++    "enableContent": "Восстановить доступ «{{name}}»?",
++    "ok": "Подтвердить"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/common.json b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/common.json
+index 895f4e1..bcbdb56 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/common.json
+@@ -11,6 +11,7 @@
+   "skills": "Навыки",
+   "workspace": "Проект",
+   "settings": "Настройки",
++  "adminConsole": "Админ-консоль",
+   "system": "Система",
+   "about": "О программе",
+   "back": "Назад к чату",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/index.ts b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/index.ts
 index 0571d44..a7df18e 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/index.ts
@@ -2165,10 +2873,10 @@ index 0571d44..a7df18e 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/admin.json b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/admin.json
 new file mode 100644
-index 0000000..79f882d
+index 0000000..e3b1e6a
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -2202,7 +2910,12 @@ index 0000000..79f882d
 +    "adminTag": "Yönetici",
 +    "active": "Etkin",
 +    "disabled": "Devre dışı",
-+    "empty": "Kullanıcı yok"
++    "empty": "Kullanıcı yok",
++    "createUser": "Kullanıcı oluştur",
++    "resetPassword": "Şifreyi sıfırla",
++    "disable": "Devre dışı bırak",
++    "enable": "Etkinleştir",
++    "actions": "İşlemler"
 +  },
 +  "providers": {
 +    "title": "Model sağlayıcıları",
@@ -2246,9 +2959,47 @@ index 0000000..79f882d
 +  "message": {
 +    "created": "Model sağlayıcısı oluşturuldu",
 +    "updated": "Model sağlayıcısı güncellendi",
-+    "deleted": "Silindi"
++    "deleted": "Silindi",
++    "userCreated": "Kullanıcı oluşturuldu",
++    "passwordReset": "Şifre sıfırlandı — oturumlar kapatıldı",
++    "statusChanged": "Durum güncellendi",
++    "userOpFailed": "İşlem başarısız."
++  },
++  "userModal": {
++    "createTitle": "Kullanıcı oluştur",
++    "okCreate": "Oluştur",
++    "resetTitle": "Şifreyi sıfırla · {{name}}",
++    "okReset": "Sıfırla",
++    "username": "Kullanıcı adı",
++    "usernamePlaceholder": "3–32 karakter: harf, rakam, - veya _",
++    "usernameRequired": "Kullanıcı adını girin",
++    "usernameInvalid": "Yalnızca harf, rakam, - ve _; 3–32 karakter; - veya _ ile başlamaz/bitmez",
++    "password": "Şifre",
++    "passwordPlaceholder": "En az 8 karakter",
++    "passwordRequired": "Şifreyi girin",
++    "passwordInvalid": "En az 8 karakter",
++    "passwordHint": "En az 8 karakter. Oluşturduktan sonra kullanıcıya bildirin."
++  },
++  "userDialog": {
++    "disableTitle": "Hesabı devre dışı bırak",
++    "disableContent": "\"{{name}}\" devre dışı bırakılsın mı? Tüm oturumları anında kapatılır.",
++    "enableTitle": "Hesabı etkinleştir",
++    "enableContent": "\"{{name}}\" oturumu geri açılsın mı?",
++    "ok": "Onayla"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/common.json b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/common.json
+index 7f9c8ed..322a608 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/common.json
+@@ -11,6 +11,7 @@
+   "skills": "Beceriler",
+   "workspace": "Proje",
+   "settings": "Ayarlar",
++  "adminConsole": "Yönetim Konsolu",
+   "system": "Sistem",
+   "about": "Hakkımızda",
+   "back": "Sohbete Dön",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/index.ts
 index 0654712..ce3be9e 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/index.ts
@@ -2269,10 +3020,10 @@ index 0654712..ce3be9e 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/admin.json b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/admin.json
 new file mode 100644
-index 0000000..a888508
+index 0000000..4029f6d
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -2306,7 +3057,12 @@ index 0000000..a888508
 +    "adminTag": "Адміністратор",
 +    "active": "Активний",
 +    "disabled": "Вимкнено",
-+    "empty": "Користувачів немає"
++    "empty": "Користувачів немає",
++    "createUser": "Створити користувача",
++    "resetPassword": "Скинути пароль",
++    "disable": "Вимкнути",
++    "enable": "Увімкнути",
++    "actions": "Дії"
 +  },
 +  "providers": {
 +    "title": "Модель-провайдери",
@@ -2350,9 +3106,47 @@ index 0000000..a888508
 +  "message": {
 +    "created": "Модель-провайдер створено",
 +    "updated": "Модель-провайдер оновлено",
-+    "deleted": "Видалено"
++    "deleted": "Видалено",
++    "userCreated": "Користувача створено",
++    "passwordReset": "Пароль скинуто — сеанси завершено",
++    "statusChanged": "Статус оновлено",
++    "userOpFailed": "Не вдалося виконати операцію."
++  },
++  "userModal": {
++    "createTitle": "Створити користувача",
++    "okCreate": "Створити",
++    "resetTitle": "Скинути пароль · {{name}}",
++    "okReset": "Скинути",
++    "username": "Ім'я користувача",
++    "usernamePlaceholder": "3–32 символи: літери, цифри, - або _",
++    "usernameRequired": "Введіть ім'я користувача",
++    "usernameInvalid": "Лише літери, цифри, - і _; 3–32 символи; не починається і не закінчується на - або _",
++    "password": "Пароль",
++    "passwordPlaceholder": "Щонайменше 8 символів",
++    "passwordRequired": "Введіть пароль",
++    "passwordInvalid": "Щонайменше 8 символів",
++    "passwordHint": "Щонайменше 8 символів. Після створення повідомте користувача."
++  },
++  "userDialog": {
++    "disableTitle": "Вимкнути обліковий запис",
++    "disableContent": "Вимкнути «{{name}}»? Усі сеанси буде негайно завершено.",
++    "enableTitle": "Увімкнути обліковий запис",
++    "enableContent": "Відновити доступ «{{name}}»?",
++    "ok": "Підтвердити"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/common.json b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/common.json
+index eeb89cc..3b1ea87 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/common.json
+@@ -11,6 +11,7 @@
+   "skills": "Навички",
+   "workspace": "Проєкт",
+   "settings": "Налаштування",
++  "adminConsole": "Адмін-консоль",
+   "system": "Система",
+   "about": "Про нас",
+   "back": "Назад до чату",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/index.ts b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/index.ts
 index 68886da..5450f2d 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/index.ts
@@ -2373,10 +3167,10 @@ index 68886da..5450f2d 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/admin.json b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/admin.json
 new file mode 100644
-index 0000000..d660ac5
+index 0000000..4778171
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -2410,7 +3204,12 @@ index 0000000..d660ac5
 +    "adminTag": "管理员",
 +    "active": "启用",
 +    "disabled": "停用",
-+    "empty": "暂无用户"
++    "empty": "暂无用户",
++    "createUser": "新建用户",
++    "resetPassword": "重置密码",
++    "disable": "停用",
++    "enable": "启用",
++    "actions": "操作"
 +  },
 +  "providers": {
 +    "title": "模型服务",
@@ -2454,9 +3253,47 @@ index 0000000..d660ac5
 +  "message": {
 +    "created": "已为该用户创建模型服务",
 +    "updated": "模型服务已更新",
-+    "deleted": "已删除"
++    "deleted": "已删除",
++    "userCreated": "用户已创建",
++    "passwordReset": "密码已重置，该账号的登录已全部失效",
++    "statusChanged": "状态已更新",
++    "userOpFailed": "操作失败。"
++  },
++  "userModal": {
++    "createTitle": "新建用户",
++    "okCreate": "创建",
++    "resetTitle": "重置密码 · {{name}}",
++    "okReset": "重置",
++    "username": "用户名",
++    "usernamePlaceholder": "3–32 位，字母、数字、- 或 _",
++    "usernameRequired": "请输入用户名",
++    "usernameInvalid": "仅限字母、数字、-、_，3–32 位，且不以 - 或 _ 开头或结尾",
++    "password": "密码",
++    "passwordPlaceholder": "至少 8 位",
++    "passwordRequired": "请输入密码",
++    "passwordInvalid": "至少 8 位",
++    "passwordHint": "至少 8 位，创建后请告知该用户。"
++  },
++  "userDialog": {
++    "disableTitle": "停用账号",
++    "disableContent": "确定停用「{{name}}」吗？该账号的所有登录会话将立即失效。",
++    "enableTitle": "启用账号",
++    "enableContent": "确定恢复「{{name}}」的登录吗？",
++    "ok": "确认"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/common.json b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/common.json
+index 057d06e..ebff4c4 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/common.json
+@@ -11,6 +11,7 @@
+   "skills": "技能",
+   "workspace": "项目",
+   "settings": "设置",
++  "adminConsole": "管理控制台",
+   "system": "系统",
+   "about": "关于我们",
+   "back": "返回聊天",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/index.ts b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/index.ts
 index 15e9035..9993a4b 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/index.ts
@@ -2477,10 +3314,10 @@ index 15e9035..9993a4b 100644
  };
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/admin.json b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/admin.json
 new file mode 100644
-index 0000000..dc75775
+index 0000000..73a0b13
 --- /dev/null
 +++ b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/admin.json
-@@ -0,0 +1,80 @@
+@@ -0,0 +1,111 @@
 +{
 +  "brand": {
 +    "mark": "AionUi",
@@ -2514,7 +3351,12 @@ index 0000000..dc75775
 +    "adminTag": "管理員",
 +    "active": "啟用",
 +    "disabled": "停用",
-+    "empty": "暫無使用者"
++    "empty": "暫無使用者",
++    "createUser": "新增使用者",
++    "resetPassword": "重設密碼",
++    "disable": "停用",
++    "enable": "啟用",
++    "actions": "操作"
 +  },
 +  "providers": {
 +    "title": "模型服務",
@@ -2558,9 +3400,47 @@ index 0000000..dc75775
 +  "message": {
 +    "created": "已為該使用者建立模型服務",
 +    "updated": "模型服務已更新",
-+    "deleted": "已刪除"
++    "deleted": "已刪除",
++    "userCreated": "使用者已建立",
++    "passwordReset": "密碼已重置，該帳號的登入已全部失效",
++    "statusChanged": "狀態已更新",
++    "userOpFailed": "操作失敗。"
++  },
++  "userModal": {
++    "createTitle": "新增使用者",
++    "okCreate": "建立",
++    "resetTitle": "重設密碼 · {{name}}",
++    "okReset": "重設",
++    "username": "使用者名稱",
++    "usernamePlaceholder": "3–32 位，字母、數字、- 或 _",
++    "usernameRequired": "請輸入使用者名稱",
++    "usernameInvalid": "僅限字母、數字、-、_，3–32 位，且不以 - 或 _ 開頭或結尾",
++    "password": "密碼",
++    "passwordPlaceholder": "至少 8 位",
++    "passwordRequired": "請輸入密碼",
++    "passwordInvalid": "至少 8 位",
++    "passwordHint": "至少 8 位，建立後請告知該使用者。"
++  },
++  "userDialog": {
++    "disableTitle": "停用帳號",
++    "disableContent": "確定停用「{{name}}」嗎？該帳號的所有登入工作階段將立即失效。",
++    "enableTitle": "啟用帳號",
++    "enableContent": "確定恢復「{{name}}」的登入嗎？",
++    "ok": "確認"
 +  }
 +}
+diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/common.json b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/common.json
+index 435ebec..1c4d111 100644
+--- a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/common.json
++++ b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/common.json
+@@ -11,6 +11,7 @@
+   "skills": "技能",
+   "workspace": "專案",
+   "settings": "設定",
++  "adminConsole": "管理控制台",
+   "system": "系統",
+   "about": "關於我們",
+   "back": "返回聊天",
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/index.ts b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/index.ts
 index 0654712..ce3be9e 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/index.ts
