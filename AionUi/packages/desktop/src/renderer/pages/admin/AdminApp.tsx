@@ -566,12 +566,7 @@ export function AdminApp() {
         onSubmit={saveProvider}
       />
 
-      <UserModal
-        draft={userDraft}
-        saving={userSaving}
-        onCancel={() => setUserDraft(null)}
-        onSubmit={submitUser}
-      />
+      <UserModal draft={userDraft} saving={userSaving} onCancel={() => setUserDraft(null)} onSubmit={submitUser} />
     </div>
   );
 }
