@@ -494,7 +494,9 @@ async fn admin_set_status(
     let Json(req) = body.map_err(ApiError::from)?;
     let target = require_user(&state, &user_id).await?;
     if target.id == ADMIN_USER_ID && req.status == AdminUserStatus::Disabled {
-        return Err(ApiError::BadRequest("The primary admin account cannot be disabled".into()));
+        return Err(ApiError::BadRequest(
+            "The primary admin account cannot be disabled".into(),
+        ));
     }
     let status = match req.status {
         AdminUserStatus::Active => UserStatus::Active,

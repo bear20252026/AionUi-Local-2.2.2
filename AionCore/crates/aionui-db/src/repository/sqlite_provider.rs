@@ -51,11 +51,10 @@ impl IProviderRepository for SqliteProviderRepository {
             .await?;
 
         for row in rows {
-            if let Ok(model_list) = serde_json::from_str::<Vec<String>>(&row.models) {
-                if model_list.iter().any(|m| m == model_id) {
+            if let Ok(model_list) = serde_json::from_str::<Vec<String>>(&row.models)
+                && model_list.iter().any(|m| m == model_id) {
                     return Ok(Some(row));
                 }
-            }
         }
         Ok(None)
     }

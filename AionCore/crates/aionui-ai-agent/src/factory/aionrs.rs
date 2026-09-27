@@ -147,8 +147,7 @@ pub(super) async fn build(
             // not exist offline). Fall back to a real provider that actually
             // serves the requested model name. This lets aionrs agents work
             // without any fake provider row or fake user.
-            deps
-                .provider_repo
+            deps.provider_repo
                 .find_by_model(&ctx.user_id, &model_id)
                 .await
                 .map_err(|e| AgentError::internal(format!("Failed to load provider config: {e}")))?

@@ -282,7 +282,12 @@ async fn admin_own_provider_list_stays_plaintext() {
     let app = setup().await;
     let resp = app
         .clone()
-        .oneshot(request_for_user(ADMIN_ID, "POST", "/api/providers", Some(sample_provider("Mine"))))
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "POST",
+            "/api/providers",
+            Some(sample_provider("Mine")),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
@@ -301,7 +306,12 @@ async fn guest_cannot_see_own_key_in_plaintext() {
     // The guest configures their own provider — still masked on read.
     let resp = app
         .clone()
-        .oneshot(request_for_user(GUEST_ID, "POST", "/api/providers", Some(sample_provider("Self"))))
+        .oneshot(request_for_user(
+            GUEST_ID,
+            "POST",
+            "/api/providers",
+            Some(sample_provider("Self")),
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
