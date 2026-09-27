@@ -16,8 +16,10 @@ git -C ../../AionCore diff -- crates/ \
   > patches/aioncore-v0.2.2-admin-api.patch
 git -C ../../AionUi add -N packages/desktop/src/renderer/admin.html \
       packages/desktop/src/renderer/admin.tsx packages/desktop/src/renderer/pages/admin \
+      packages/desktop/src/renderer/pages/AppErrorBoundary.tsx \
       packages/desktop/src/renderer/services/i18n/locales/*/admin.json \
-      tests/unit/renderer/hooks/useConversationListSyncIdentity.dom.test.tsx
+      tests/unit/renderer/hooks/useConversationListSyncIdentity.dom.test.tsx \
+      tests/unit/renderer/AppErrorBoundary.dom.test.tsx
 git -C ../../AionUi diff > patches/aionui-v2.2.2-multiuser.patch
 
 # 校验（必须在干净 tag 上通过，再与 monorepo 逐文件比对）
@@ -38,8 +40,8 @@ git -C ../../AionUi apply --check patches/aionui-v2.2.2-multiuser.patch
 | 文件 | 上游基线 | 内容 | 用途 |
 |------|----------|------|------|
 | `aioncore-v0.2.2-no-login.patch` | iOfficeAI/AionCore v0.2.2 | provider `find_by_model` 回退（3 个文件）：trait 默认方法 + sqlite 实现（`WHERE enabled=1 AND user_id=?`，**严格限请求者本人**）+ aionrs 工厂回退 | 桌面 + 网页，必打 |
-| `aioncore-v0.2.2-admin-api.patch` | 同上（叠打在 no-login 之上） | Web 管理控制台后端（15 个文件）：`aionui-system/routes.rs` admin **用户管理 API（建号 / 重置密码 / 停用启用）** + Provider 管理 API、`aionui-api-types`（auth.rs/lib.rs）类型、`aionui-app/router/state.rs` 装配、`aionui-db/lib.rs` 导出 `User`、**`aionui-auth` 登录拒绝已停用账号**（routes.rs + tests/route_tests.rs）、`tests/admin_routes.rs`（新增）及 7 个既有路由测试补 user repo 夹具 | 网页版多用户（管理控制台） |
-| `aionui-v2.2.2-multiuser.patch` | iOfficeAI/AionUi v2.2.2 | ① `web-host/backend-launcher.ts`：`--local` 硬编码改 `AIONUI_MULTIUSER` 开关（默认关 = 上游单用户）；② CSRF 双提交补齐（httpBridge 读 `aionui-csrf-token` cookie 给状态变更请求附 `x-csrf-token`，sessionRefresh/configService/AuthContext/FileService/SpeechToText 同步附头，含回归测试）；③ 浏览器登录门 + login 页多用户引导；④ Web 管理控制台前端：`renderer/admin.html/admin.tsx`、`pages/admin/`（AdminApp 等）、`/admin` 直出（web-host static-server + electron.vite 入口）、静态资源确定性缓存头；⑤ 控制台 13 语言 i18n（`locales/*/admin.json` + index.ts 注册 + i18n-keys.d.ts）；⑥ 切换账号清空会话列表防串号；⑦ 多用户首启密码失败告警（scripts/webui.ts、resetpass.ts）；⑧ 控制台用户开通前端（新建用户 / 重置密码 / 停用启用对话框，`AdminApp.tsx`）；⑨ 侧栏"管理控制台"入口（`SiderFooter`/`Sider`，仅浏览器 WebUI 显示，文案 `common.adminConsole` ×13 语言） | 网页版多用户，必打 |
+| `aioncore-v0.2.2-admin-api.patch` | 同上（叠打在 no-login 之上） | Web 管理控制台后端（15 个文件）：`aionui-system/routes.rs` admin **用户管理 API（建号 / 重置密码 / 停用启用）** + Provider 管理 API、`aionui-api-types`（auth.rs/lib.rs）类型、`aionui-app/router/state.rs` 装配、`aionui-db/lib.rs` 导出 `User`、**`aionui-auth` 登录拒绝已停用账号**（routes.rs + tests/route_tests.rs）、**`aionui-auth` 会话刷新无凭据时返回 401（原 415）**、`tests/admin_routes.rs`（新增）及 7 个既有路由测试补 user repo 夹具 | 网页版多用户（管理控制台） |
+| `aionui-v2.2.2-multiuser.patch` | iOfficeAI/AionUi v2.2.2 | ① `web-host/backend-launcher.ts`：`--local` 硬编码改 `AIONUI_MULTIUSER` 开关（默认关 = 上游单用户）；② CSRF 双提交补齐（httpBridge 读 `aionui-csrf-token` cookie 给状态变更请求附 `x-csrf-token`，sessionRefresh/configService/AuthContext/FileService/SpeechToText 同步附头，含回归测试）；③ 浏览器登录门 + login 页多用户引导；④ Web 管理控制台前端：`renderer/admin.html/admin.tsx`、`pages/admin/`（AdminApp 等）、`/admin` 直出（web-host static-server + electron.vite 入口）、静态资源确定性缓存头；⑤ 控制台 13 语言 i18n（`locales/*/admin.json` + index.ts 注册 + i18n-keys.d.ts）；⑥ 切换账号清空会话列表防串号；⑦ 多用户首启密码失败告警（scripts/webui.ts、resetpass.ts）；⑧ 控制台用户开通前端（新建用户 / 重置密码 / 停用启用对话框，`AdminApp.tsx`）；⑨ 侧栏"管理控制台"入口（`SiderFooter`/`Sider`，仅浏览器 WebUI 显示，文案 `common.adminConsole` ×13 语言）；⑩ 全局错误边界（`pages/AppErrorBoundary.tsx`，渲染崩溃显示可重载的错误卡片而不是白屏，13 语言 + 单测） | 网页版多用户，必打 |
 | `aionui-v2.2.2-auth-bypass.patch` | iOfficeAI/AionUi v2.2.2 | `AuthContext.tsx` 硬编码 `isDesktopRuntime = true`（任何运行时不跳 /login） | **仅**"网页免登录"部署；与 multiuser 补丁**互斥**（都改 AuthContext.tsx），多用户部署**禁用** |
 
 行为速查：

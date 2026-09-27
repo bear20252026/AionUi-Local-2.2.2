@@ -208,10 +208,10 @@ index 0000000..68dbb64
 +</html>
 diff --git a/packages/desktop/src/renderer/admin.tsx b/packages/desktop/src/renderer/admin.tsx
 new file mode 100644
-index 0000000..aaaa7c1
+index 0000000..87d4120
 --- /dev/null
 +++ b/packages/desktop/src/renderer/admin.tsx
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,57 @@
 +/**
 + * @license
 + * Copyright 2025 AionUi (aionui.com)
@@ -245,6 +245,7 @@ index 0000000..aaaa7c1
 +import i18next from 'i18next';
 +
 +import { AdminApp } from './pages/admin/AdminApp';
++import AppErrorBoundary from './pages/AppErrorBoundary';
 +
 +// Arco's own widget strings (date pickers, pagination) are locale-scoped; every
 +// visible string in the console itself comes from i18next, so anything outside
@@ -262,9 +263,11 @@ index 0000000..aaaa7c1
 +}
 +
 +createRoot(container).render(
-+  <ConfigProvider locale={ARCO_LOCALES[i18next.resolvedLanguage ?? ''] ?? enUS}>
-+    <AdminApp />
-+  </ConfigProvider>
++  <AppErrorBoundary>
++    <ConfigProvider locale={ARCO_LOCALES[i18next.resolvedLanguage ?? ''] ?? enUS}>
++      <AdminApp />
++    </ConfigProvider>
++  </AppErrorBoundary>
 +);
 diff --git a/packages/desktop/src/renderer/components/layout/Sider/SiderFooter.tsx b/packages/desktop/src/renderer/components/layout/Sider/SiderFooter.tsx
 index e6dc504..3d1cfa8 100644
@@ -412,6 +415,198 @@ index 6e56c94..70f3673 100644
          },
          credentials: 'include',
          body: JSON.stringify(withCsrfToken({})),
+diff --git a/packages/desktop/src/renderer/main.tsx b/packages/desktop/src/renderer/main.tsx
+index ab784ba..bd0a39d 100644
+--- a/packages/desktop/src/renderer/main.tsx
++++ b/packages/desktop/src/renderer/main.tsx
+@@ -102,6 +102,7 @@ import BackendStartupGate from './components/layout/BackendStartupGate';
+ import GpuAutoDisableNotice from './components/layout/GpuAutoDisableNotice';
+ import Layout from './components/layout/Layout';
+ import Router from './components/layout/Router';
++import AppErrorBoundary from './pages/AppErrorBoundary';
+ import Sider from './components/layout/Sider';
+ import { useAuth } from './hooks/context/AuthContext';
+ import { ConversationHistoryProvider } from './hooks/context/ConversationHistoryContext';
+@@ -490,21 +491,25 @@ void registerPwa();
+ 
+ const root = createRoot(document.getElementById('root')!);
+ root.render(
+-  <BackendStartupGate
+-    renderStarting={() => (
+-      <Config>
+-        <BackendStartingView />
+-      </Config>
+-    )}
+-    renderFailure={(failure) => (
+-      <Config>
+-        <BackendStartupFailureDialog failure={failure} />
+-      </Config>
+-    )}
+-    renderApp={() => (
+-      <AppProviders>
+-        <App />
+-      </AppProviders>
+-    )}
+-  />
++  // Outermost guard: without it any render error below unmounts the whole tree
++  // and leaves the user on a blank page with no message and no recovery.
++  <AppErrorBoundary>
++    <BackendStartupGate
++      renderStarting={() => (
++        <Config>
++          <BackendStartingView />
++        </Config>
++      )}
++      renderFailure={(failure) => (
++        <Config>
++          <BackendStartupFailureDialog failure={failure} />
++        </Config>
++      )}
++      renderApp={() => (
++        <AppProviders>
++          <App />
++        </AppProviders>
++      )}
++    />
++  </AppErrorBoundary>
+ );
+diff --git a/packages/desktop/src/renderer/pages/AppErrorBoundary.tsx b/packages/desktop/src/renderer/pages/AppErrorBoundary.tsx
+new file mode 100644
+index 0000000..3cfe118
+--- /dev/null
++++ b/packages/desktop/src/renderer/pages/AppErrorBoundary.tsx
+@@ -0,0 +1,131 @@
++/**
++ * @license
++ * Copyright 2025 AionUi (aionui.com)
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import React from 'react';
++
++import { Button, Space, Typography } from '@arco-design/web-react';
++import i18next from 'i18next';
++
++type AppErrorBoundaryProps = {
++  children: React.ReactNode;
++};
++
++type AppErrorBoundaryState = {
++  error: Error | null;
++  componentStack: string | null;
++  copied: boolean;
++};
++
++/**
++ * Root-level error boundary.
++ *
++ * Without it, any render-time exception unmounts the whole React tree: the user
++ * gets a white screen with no message and no way out. This turns that into an
++ * actionable card — one-click reload plus the raw stack, printed and copyable,
++ * so a report does not even need F12.
++ *
++ * Inline styles only (no UnoCSS/Arco theme dependencies): the boundary has to
++ * render even when the rest of the app failed to initialize.
++ */
++export default class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
++  public state: AppErrorBoundaryState = { error: null, componentStack: null, copied: false };
++
++  public static getDerivedStateFromError(error: Error): Partial<AppErrorBoundaryState> {
++    return { error };
++  }
++
++  public componentDidCatch(error: Error, info: React.ErrorInfo): void {
++    // Primary diagnostic channel for the next "why is it white" report.
++    console.error('[AppErrorBoundary] unhandled render error:', error, info.componentStack ?? '');
++    this.setState({ componentStack: info.componentStack ?? null });
++  }
++
++  private readonly handleReload = (): void => {
++    window.location.reload();
++  };
++
++  private readonly handleCopy = async (): Promise<void> => {
++    const detail = this.formatDetail();
++    try {
++      await navigator.clipboard.writeText(detail);
++      // No toast here: the toast host lives inside the tree that just crashed.
++      this.setState({ copied: true });
++      setTimeout(() => this.setState({ copied: false }), 2000);
++    } catch {
++      console.error('[AppErrorBoundary] error details:\n' + detail);
++    }
++  };
++
++  private formatDetail(): string {
++    const { error, componentStack } = this.state;
++    const head = error ? error.stack || error.message : 'Unknown error';
++    return componentStack ? `${head}\n\nComponent stack:${componentStack}` : head;
++  }
++
++  public render() {
++    const { children } = this.props;
++    const { error } = this.state;
++    if (!error) return children;
++
++    const t = (key: string) => i18next.t(`common.errorBoundary.${key}`);
++    return (
++      <div
++        style={{
++          display: 'flex',
++          alignItems: 'center',
++          justifyContent: 'center',
++          width: '100%',
++          minHeight: '100vh',
++          padding: 24,
++          background: 'var(--bg-1, #f7f8fa)',
++          fontFamily: 'inherit',
++        }}
++      >
++        <div
++          style={{
++            width: '100%',
++            maxWidth: 640,
++            padding: 24,
++            borderRadius: 12,
++            background: 'var(--bg-base, #ffffff)',
++            border: '1px solid var(--border-base, #e5e6eb)',
++          }}
++        >
++          <Typography.Title heading={4} style={{ marginTop: 0, marginBottom: 8 }}>
++            {t('title')}
++          </Typography.Title>
++          <Typography.Paragraph type='secondary' style={{ marginBottom: 16 }}>
++            {t('description')}
++          </Typography.Paragraph>
++          <Space size={12} style={{ marginBottom: 16 }}>
++            <Button type='primary' onClick={this.handleReload}>
++              {t('reload')}
++            </Button>
++            <Button onClick={() => void this.handleCopy()}>{this.state.copied ? t('copied') : t('copy')}</Button>
++          </Space>
++          <div style={{ fontSize: 12, color: 'var(--text-secondary, #4e5969)', marginBottom: 4 }}>{t('details')}</div>
++          <pre
++            style={{
++              maxHeight: 240,
++              overflow: 'auto',
++              margin: 0,
++              padding: 12,
++              borderRadius: 8,
++              fontSize: 12,
++              lineHeight: 1.5,
++              background: 'var(--bg-1, #f2f3f5)',
++              color: 'var(--text-secondary, #4e5969)',
++              whiteSpace: 'pre-wrap',
++              wordBreak: 'break-word',
++            }}
++          >
++            {this.formatDetail()}
++          </pre>
++        </div>
++      </div>
++    );
++  }
++}
 diff --git a/packages/desktop/src/renderer/pages/admin/AdminApp.module.css b/packages/desktop/src/renderer/pages/admin/AdminApp.module.css
 new file mode 100644
 index 0000000..fc9a989
@@ -509,10 +704,10 @@ index 0000000..fc9a989
 +}
 diff --git a/packages/desktop/src/renderer/pages/admin/AdminApp.tsx b/packages/desktop/src/renderer/pages/admin/AdminApp.tsx
 new file mode 100644
-index 0000000..cc80283
+index 0000000..83f75c3
 --- /dev/null
 +++ b/packages/desktop/src/renderer/pages/admin/AdminApp.tsx
-@@ -0,0 +1,761 @@
+@@ -0,0 +1,756 @@
 +/**
 + * @license
 + * Copyright 2025 AionUi (aionui.com)
@@ -1081,12 +1276,7 @@ index 0000000..cc80283
 +        onSubmit={saveProvider}
 +      />
 +
-+      <UserModal
-+        draft={userDraft}
-+        saving={userSaving}
-+        onCancel={() => setUserDraft(null)}
-+        onSubmit={submitUser}
-+      />
++      <UserModal draft={userDraft} saving={userSaving} onCancel={() => setUserDraft(null)} onSubmit={submitUser} />
 +    </div>
 +  );
 +}
@@ -1436,7 +1626,7 @@ index 3ab4842..45d7abb 100644
      xhr.addEventListener('load', () => {
        if (xhr.status < 200 || xhr.status >= 300) {
 diff --git a/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts b/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts
-index 677ae71..c268910 100644
+index 677ae71..835e7f7 100644
 --- a/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts
 +++ b/packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts
 @@ -23,6 +23,93 @@ export type I18nKey =
@@ -1541,7 +1731,20 @@ index 677ae71..c268910 100644
    | 'common.agentMode'
    | 'common.aiAssistant'
    | 'common.back'
-@@ -3054,4 +3142,5 @@ export type I18nModule =
+@@ -283,6 +371,12 @@ export type I18nKey =
+   | 'common.download'
+   | 'common.edit'
+   | 'common.error'
++  | 'common.errorBoundary.copied'
++  | 'common.errorBoundary.copy'
++  | 'common.errorBoundary.description'
++  | 'common.errorBoundary.details'
++  | 'common.errorBoundary.reload'
++  | 'common.errorBoundary.title'
+   | 'common.error_details'
+   | 'common.escToCancel'
+   | 'common.expand'
+@@ -3054,4 +3148,5 @@ export type I18nModule =
    | 'guid'
    | 'agent'
    | 'team'
@@ -1666,7 +1869,7 @@ index 0000000..0bc9034
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/de-DE/common.json b/packages/desktop/src/renderer/services/i18n/locales/de-DE/common.json
-index 6ccdd02..bac7870 100644
+index 6ccdd02..3a86294 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/de-DE/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/de-DE/common.json
 @@ -11,6 +11,7 @@
@@ -1677,6 +1880,21 @@ index 6ccdd02..bac7870 100644
    "system": "System",
    "about": "Über uns",
    "back": "Zurück zum Chat",
+@@ -202,5 +203,13 @@
+   "goBack": "Zurück",
+   "selectedCount": "{{count}} ausgewählt",
+   "selectedSkills": "Ausgewählte Skills",
+-  "aiAssistant": "KI-Assistent"
++  "aiAssistant": "KI-Assistent",
++  "errorBoundary": {
++    "title": "Etwas ist schiefgelaufen",
++    "description": "Die Oberfläche ist an einem unbehandelten Fehler gestoppt. Laden Sie die Seite neu; falls es wiederholt auftritt, kopieren Sie die Details unten und senden Sie sie an den Maintainer.",
++    "reload": "Seite neu laden",
++    "copy": "Fehlerdetails kopieren",
++    "copied": "Kopiert",
++    "details": "Fehlerdetails"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/de-DE/index.ts b/packages/desktop/src/renderer/services/i18n/locales/de-DE/index.ts
 index ee5c97e..7c75a4b 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/de-DE/index.ts
@@ -1813,7 +2031,7 @@ index 0000000..6cc9334
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/en-US/common.json b/packages/desktop/src/renderer/services/i18n/locales/en-US/common.json
-index 509d838..2ad3e11 100644
+index 509d838..db1cdde 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/en-US/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/en-US/common.json
 @@ -11,6 +11,7 @@
@@ -1824,6 +2042,21 @@ index 509d838..2ad3e11 100644
    "system": "System",
    "about": "About Us",
    "back": "Back to Chat",
+@@ -202,5 +203,13 @@
+   },
+   "selectedCount": "Selected {{count}}",
+   "selectedSkills": "Selected skills",
+-  "aiAssistant": "AI Assistant"
++  "aiAssistant": "AI Assistant",
++  "errorBoundary": {
++    "title": "Something went wrong",
++    "description": "The interface hit an unhandled error and stopped rendering. Reload the page; if it keeps happening, copy the details below and send them to the maintainer.",
++    "reload": "Reload the page",
++    "copy": "Copy error details",
++    "copied": "Copied",
++    "details": "Error details"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/en-US/index.ts b/packages/desktop/src/renderer/services/i18n/locales/en-US/index.ts
 index 9bd9747..6a12e45 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/en-US/index.ts
@@ -1960,7 +2193,7 @@ index 0000000..83247ea
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/es-ES/common.json b/packages/desktop/src/renderer/services/i18n/locales/es-ES/common.json
-index 2571f63..85e8eb2 100644
+index 2571f63..68d140c 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/es-ES/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/es-ES/common.json
 @@ -11,6 +11,7 @@
@@ -1971,6 +2204,21 @@ index 2571f63..85e8eb2 100644
    "system": "Sistema",
    "about": "Acerca de",
    "back": "Volver al chat",
+@@ -202,5 +203,13 @@
+   "goBack": "Back",
+   "selectedCount": "{{count}} seleccionado(s)",
+   "selectedSkills": "Habilidades seleccionadas",
+-  "aiAssistant": "Asistente de IA"
++  "aiAssistant": "Asistente de IA",
++  "errorBoundary": {
++    "title": "Algo salió mal",
++    "description": "La interfaz encontró un error no controlado y dejó de renderizar. Recarga la página; si se repite, copia los detalles de abajo y envíalos al responsable.",
++    "reload": "Recargar la página",
++    "copy": "Copiar detalles del error",
++    "copied": "Copiado",
++    "details": "Detalles del error"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/es-ES/index.ts b/packages/desktop/src/renderer/services/i18n/locales/es-ES/index.ts
 index 27d5c16..3457557 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/es-ES/index.ts
@@ -2107,7 +2355,7 @@ index 0000000..eea4a40
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/common.json b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/common.json
-index 95f3bf0..186ef7e 100644
+index 95f3bf0..8c27715 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/common.json
 @@ -11,6 +11,7 @@
@@ -2118,6 +2366,21 @@ index 95f3bf0..186ef7e 100644
    "system": "سیستم",
    "about": "درباره ما",
    "back": "بازگشت به چت",
+@@ -202,5 +203,13 @@
+   },
+   "selectedCount": "{{count}} انتخاب‌شده",
+   "selectedSkills": "مهارت‌های انتخاب‌شده",
+-  "aiAssistant": "دستیار هوش مصنوعی"
++  "aiAssistant": "دستیار هوش مصنوعی",
++  "errorBoundary": {
++    "title": "مشکلی پیش آمد",
++    "description": "رابط کاربری با خطای مدیریت‌نشده متوقف شد. صفحه را دوباره بارگذاری کنید؛ اگر تکرار شد، جزئیات زیر را کپی کرده برای نگهدارنده بفرستید.",
++    "reload": "بارگذاری مجدد صفحه",
++    "copy": "کپی جزئیات خطا",
++    "copied": "کپی شد",
++    "details": "جزئیات خطا"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/fa-IR/index.ts
 index 68d075d..29bd748 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/fa-IR/index.ts
@@ -2254,7 +2517,7 @@ index 0000000..a51a1b3
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/common.json b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/common.json
-index a2f11bc..13e0072 100644
+index a2f11bc..7406eb2 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/common.json
 @@ -11,6 +11,7 @@
@@ -2265,6 +2528,21 @@ index a2f11bc..13e0072 100644
    "system": "Système",
    "about": "À propos",
    "back": "Retour au chat",
+@@ -202,5 +203,13 @@
+   },
+   "selectedCount": "{{count}} sélectionné(s)",
+   "selectedSkills": "Compétences sélectionnées",
+-  "aiAssistant": "Assistant IA"
++  "aiAssistant": "Assistant IA",
++  "errorBoundary": {
++    "title": "Une erreur est survenue",
++    "description": "L'interface a rencontré une erreur non gérée et a cessé de s'afficher. Rechargez la page ; si cela se reproduit, copiez les détails ci-dessous et envoyez-les au mainteneur.",
++    "reload": "Recharger la page",
++    "copy": "Copier les détails",
++    "copied": "Copié",
++    "details": "Détails de l'erreur"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/fr-FR/index.ts
 index 76e364a..1535379 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/fr-FR/index.ts
@@ -2401,7 +2679,7 @@ index 0000000..32fe9a1
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/common.json b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/common.json
-index 4125565..6600b95 100644
+index 4125565..95ec1cd 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/common.json
 @@ -11,6 +11,7 @@
@@ -2412,6 +2690,21 @@ index 4125565..6600b95 100644
    "system": "システム",
    "about": "私たちについて",
    "back": "チャットに戻る",
+@@ -202,5 +203,13 @@
+   },
+   "selectedCount": "選択済み {{count}}",
+   "selectedSkills": "選択済みスキル",
+-  "aiAssistant": "AI アシスタント"
++  "aiAssistant": "AI アシスタント",
++  "errorBoundary": {
++    "title": "エラーが発生しました",
++    "description": "未処理のエラーにより画面の描画が停止しました。ページを再読み込みしてください。繰り返される場合は、下の詳細をコピーして管理者に送ってください。",
++    "reload": "ページを再読み込む",
++    "copy": "エラー詳細をコピー",
++    "copied": "コピーしました",
++    "details": "エラー詳細"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/index.ts b/packages/desktop/src/renderer/services/i18n/locales/ja-JP/index.ts
 index 0654712..ce3be9e 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/ja-JP/index.ts
@@ -2548,7 +2841,7 @@ index 0000000..754b475
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/common.json b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/common.json
-index 4a35f8a..4d972e9 100644
+index 4a35f8a..5bf6dc5 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/common.json
 @@ -11,6 +11,7 @@
@@ -2559,6 +2852,21 @@ index 4a35f8a..4d972e9 100644
    "system": "시스템",
    "about": "소개",
    "back": "채팅으로 돌아가기",
+@@ -202,5 +203,13 @@
+   },
+   "selectedCount": "선택됨 {{count}}",
+   "selectedSkills": "선택된 스킬",
+-  "aiAssistant": "AI 어시스턴트"
++  "aiAssistant": "AI 어시스턴트",
++  "errorBoundary": {
++    "title": "오류가 발생했습니다",
++    "description": "처리되지 않은 오류로 화면 렌더링이 중지되었습니다. 페이지를 새로 고침하세요. 계속되면 아래 내용을 복사해 전달해 주세요.",
++    "reload": "페이지 새로 고침",
++    "copy": "오류 세부 정보 복사",
++    "copied": "복사됨",
++    "details": "오류 세부 정보"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/ko-KR/index.ts
 index 0654712..ce3be9e 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/ko-KR/index.ts
@@ -2695,7 +3003,7 @@ index 0000000..37d1149
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/common.json b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/common.json
-index feb0615..41457f6 100644
+index feb0615..9c9da7d 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/common.json
 @@ -11,6 +11,7 @@
@@ -2706,6 +3014,21 @@ index feb0615..41457f6 100644
    "system": "Sistema",
    "about": "Sobre Nós",
    "back": "Voltar ao Chat",
+@@ -202,5 +203,13 @@
+   },
+   "selectedCount": "{{count}} selecionado(s)",
+   "selectedSkills": "Habilidades selecionadas",
+-  "aiAssistant": "Assistente de IA"
++  "aiAssistant": "Assistente de IA",
++  "errorBoundary": {
++    "title": "Algo deu errado",
++    "description": "A interface encontrou um erro não tratado e parou de renderizar. Recarregue a página; se persistir, copie os detalhes abaixo e envie ao mantenedor.",
++    "reload": "Recarregar a página",
++    "copy": "Copiar detalhes do erro",
++    "copied": "Copiado",
++    "details": "Detalhes do erro"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/pt-BR/index.ts
 index bc16b1f..ba384c2 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/pt-BR/index.ts
@@ -2842,7 +3165,7 @@ index 0000000..72c723d
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/common.json b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/common.json
-index 895f4e1..bcbdb56 100644
+index 895f4e1..af46160 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/common.json
 @@ -11,6 +11,7 @@
@@ -2853,6 +3176,21 @@ index 895f4e1..bcbdb56 100644
    "system": "Система",
    "about": "О программе",
    "back": "Назад к чату",
+@@ -204,5 +205,13 @@
+   },
+   "selectedCount": "Выбрано {{count}}",
+   "selectedSkills": "Выбранные навыки",
+-  "aiAssistant": "ИИ-ассистент"
++  "aiAssistant": "ИИ-ассистент",
++  "errorBoundary": {
++    "title": "Что-то пошло не так",
++    "description": "В интерфейсе произошла необработанная ошибка, отображение остановлено. Перезагрузите страницу; если повторяется, скопируйте детали ниже и отправьте сопровождающему.",
++    "reload": "Перезагрузить страницу",
++    "copy": "Скопировать детали",
++    "copied": "Скопировано",
++    "details": "Детали ошибки"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/index.ts b/packages/desktop/src/renderer/services/i18n/locales/ru-RU/index.ts
 index 0571d44..a7df18e 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/ru-RU/index.ts
@@ -2989,7 +3327,7 @@ index 0000000..e3b1e6a
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/common.json b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/common.json
-index 7f9c8ed..322a608 100644
+index 7f9c8ed..17e01b4 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/common.json
 @@ -11,6 +11,7 @@
@@ -3000,6 +3338,21 @@ index 7f9c8ed..322a608 100644
    "system": "Sistem",
    "about": "Hakkımızda",
    "back": "Sohbete Dön",
+@@ -202,5 +203,13 @@
+   },
+   "selectedCount": "{{count}} seçili",
+   "selectedSkills": "Seçili beceriler",
+-  "aiAssistant": "Yapay Zekâ Asistanı"
++  "aiAssistant": "Yapay Zekâ Asistanı",
++  "errorBoundary": {
++    "title": "Bir şeyler ters gitti",
++    "description": "Arayüz işlenmemiş bir hata nedeniyle çizilmeyi durdurdu. Sayfayı yenileyin; tekrarlarsa aşağıdaki ayrıntıları kopyalayıp geliştiriciye iletin.",
++    "reload": "Sayfayı yenile",
++    "copy": "Hata ayrıntılarını kopyala",
++    "copied": "Kopyalandı",
++    "details": "Hata ayrıntıları"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/index.ts b/packages/desktop/src/renderer/services/i18n/locales/tr-TR/index.ts
 index 0654712..ce3be9e 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/tr-TR/index.ts
@@ -3136,7 +3489,7 @@ index 0000000..4029f6d
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/common.json b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/common.json
-index eeb89cc..3b1ea87 100644
+index eeb89cc..f5a25ff 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/common.json
 @@ -11,6 +11,7 @@
@@ -3147,6 +3500,21 @@ index eeb89cc..3b1ea87 100644
    "system": "Система",
    "about": "Про нас",
    "back": "Назад до чату",
+@@ -205,5 +206,13 @@
+   },
+   "selectedCount": "Вибрано {{count}}",
+   "selectedSkills": "Вибрані навички",
+-  "aiAssistant": "ШІ-асистент"
++  "aiAssistant": "ШІ-асистент",
++  "errorBoundary": {
++    "title": "Щось пішло не так",
++    "description": "В інтерфейсі сталася необроблена помилка, відображення зупинилося. Перезавантажте сторінку; якщо повторюється, скопіюйте деталі нижче та надішліть супровіднику.",
++    "reload": "Перезавантажити сторінку",
++    "copy": "Скопіювати деталі",
++    "copied": "Скопійовано",
++    "details": "Деталі помилки"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/index.ts b/packages/desktop/src/renderer/services/i18n/locales/uk-UA/index.ts
 index 68886da..5450f2d 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/uk-UA/index.ts
@@ -3283,7 +3651,7 @@ index 0000000..4778171
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/common.json b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/common.json
-index 057d06e..ebff4c4 100644
+index 057d06e..55785b0 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/common.json
 @@ -11,6 +11,7 @@
@@ -3294,6 +3662,21 @@ index 057d06e..ebff4c4 100644
    "system": "系统",
    "about": "关于我们",
    "back": "返回聊天",
+@@ -202,5 +203,13 @@
+   },
+   "selectedCount": "已选 {{count}}",
+   "selectedSkills": "已选技能",
+-  "aiAssistant": "AI 助手"
++  "aiAssistant": "AI 助手",
++  "errorBoundary": {
++    "title": "页面出错了",
++    "description": "界面遇到未处理的错误，已停止渲染。请重新加载页面；如果反复出现，请复制下方错误信息反馈给维护者。",
++    "reload": "重新加载页面",
++    "copy": "复制错误信息",
++    "copied": "已复制",
++    "details": "错误详情"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/index.ts b/packages/desktop/src/renderer/services/i18n/locales/zh-CN/index.ts
 index 15e9035..9993a4b 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/zh-CN/index.ts
@@ -3430,7 +3813,7 @@ index 0000000..73a0b13
 +  }
 +}
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/common.json b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/common.json
-index 435ebec..1c4d111 100644
+index 435ebec..8146212 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/common.json
 +++ b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/common.json
 @@ -11,6 +11,7 @@
@@ -3441,6 +3824,21 @@ index 435ebec..1c4d111 100644
    "system": "系統",
    "about": "關於我們",
    "back": "返回聊天",
+@@ -202,5 +203,13 @@
+   },
+   "selectedCount": "已選 {{count}}",
+   "selectedSkills": "已選技能",
+-  "aiAssistant": "AI 助手"
++  "aiAssistant": "AI 助手",
++  "errorBoundary": {
++    "title": "頁面發生錯誤",
++    "description": "介面遇到未處理的錯誤，已停止渲染。請重新載入頁面；若反覆出現，請複製下方錯誤資訊回報給維護者。",
++    "reload": "重新載入頁面",
++    "copy": "複製錯誤資訊",
++    "copied": "已複製",
++    "details": "錯誤詳情"
++  }
+ }
 diff --git a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/index.ts b/packages/desktop/src/renderer/services/i18n/locales/zh-TW/index.ts
 index 0654712..ce3be9e 100644
 --- a/packages/desktop/src/renderer/services/i18n/locales/zh-TW/index.ts
@@ -3849,6 +4247,68 @@ index 283255d..7513f03 100644
  
  describe('PreviewPanel', () => {
    it(
+diff --git a/tests/unit/renderer/AppErrorBoundary.dom.test.tsx b/tests/unit/renderer/AppErrorBoundary.dom.test.tsx
+new file mode 100644
+index 0000000..a4bc6c2
+--- /dev/null
++++ b/tests/unit/renderer/AppErrorBoundary.dom.test.tsx
+@@ -0,0 +1,56 @@
++/**
++ * @license
++ * Copyright 2026 AionUi (aionui.com)
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++/**
++ * White-screen regression: before this boundary existed, any render error
++ * unmounted the whole React tree and left a blank page with no message and no
++ * recovery. The boundary must render an actionable card (reload + raw error)
++ * instead, and log the stack for F12 diagnosis.
++ */
++
++import React from 'react';
++import { cleanup, render, screen } from '@testing-library/react';
++import { afterEach, describe, expect, it, vi } from 'vitest';
++
++import AppErrorBoundary from '@renderer/pages/AppErrorBoundary';
++
++const Boom: React.FC = () => {
++  throw new Error('boom-crash-marker');
++};
++
++describe('AppErrorBoundary', () => {
++  afterEach(() => {
++    cleanup();
++    vi.restoreAllMocks();
++  });
++
++  it('renders an error card with the stack and a reload action instead of white-screening', () => {
++    // React logs render errors through console.error; keep test output clean.
++    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
++
++    render(
++      <AppErrorBoundary>
++        <Boom />
++      </AppErrorBoundary>
++    );
++
++    // The failure must be surfaced, not swallowed: stack text is rendered.
++    expect(screen.getByText(/boom-crash-marker/)).toBeInTheDocument();
++    // Reload (and copy) must be offered as the recovery path.
++    expect(screen.getAllByRole('button').length).toBeGreaterThanOrEqual(1);
++
++    expect(consoleError).toHaveBeenCalled();
++  });
++
++  it('renders children normally when nothing throws', () => {
++    render(
++      <AppErrorBoundary>
++        <div>healthy-content</div>
++      </AppErrorBoundary>
++    );
++    expect(screen.getByText('healthy-content')).toBeInTheDocument();
++  });
++});
 diff --git a/tests/unit/renderer/hooks/useConversationListSyncIdentity.dom.test.tsx b/tests/unit/renderer/hooks/useConversationListSyncIdentity.dom.test.tsx
 new file mode 100644
 index 0000000..b2ee3cb

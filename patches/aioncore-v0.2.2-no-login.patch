@@ -80,10 +80,10 @@ index 5688e24..661316d 100644
      async fn create(&self, params: CreateProviderParams<'_>) -> Result<Provider, DbError>;
  
 diff --git a/crates/aionui-db/src/repository/sqlite_provider.rs b/crates/aionui-db/src/repository/sqlite_provider.rs
-index d18045f..0df6a2e 100644
+index d18045f..3309a1f 100644
 --- a/crates/aionui-db/src/repository/sqlite_provider.rs
 +++ b/crates/aionui-db/src/repository/sqlite_provider.rs
-@@ -38,6 +38,27 @@ impl IProviderRepository for SqliteProviderRepository {
+@@ -38,6 +38,28 @@ impl IProviderRepository for SqliteProviderRepository {
          Ok(row)
      }
  
@@ -101,9 +101,10 @@ index d18045f..0df6a2e 100644
 +
 +        for row in rows {
 +            if let Ok(model_list) = serde_json::from_str::<Vec<String>>(&row.models)
-+                && model_list.iter().any(|m| m == model_id) {
-+                    return Ok(Some(row));
-+                }
++                && model_list.iter().any(|m| m == model_id)
++            {
++                return Ok(Some(row));
++            }
 +        }
 +        Ok(None)
 +    }

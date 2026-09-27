@@ -94,7 +94,7 @@ index 55db9ea..12ca301 100644
  }
  
 diff --git a/crates/aionui-auth/src/routes.rs b/crates/aionui-auth/src/routes.rs
-index 94c449f..7f0801a 100644
+index 94c449f..4f11756 100644
 --- a/crates/aionui-auth/src/routes.rs
 +++ b/crates/aionui-auth/src/routes.rs
 @@ -513,6 +513,13 @@ async fn login_handler(
@@ -111,8 +111,30 @@ index 94c449f..7f0801a 100644
      let token = state
          .jwt_service
          .sign_with_session_generation(
+@@ -834,7 +841,20 @@ async fn refresh_handler(
+     let (raw_token, from_cookie) = match extract_cookie_value(&headers, REFRESH_COOKIE_NAME) {
+         Some(cookie_token) => (cookie_token, true),
+         None => {
+-            let Json(req) = body.map_err(ApiError::from)?;
++            // No refresh cookie: fall back to an explicit body token (legacy
++            // native clients). A 415 here means the caller sent no body at all
++            // (the browser path: cookie-only refresh) — there is simply no
++            // refresh credential, so answer 401 "logged out" instead of the
++            // JSON extractor's Unsupported Media Type, which clients cannot
++            // distinguish from a broken endpoint. Data/syntax errors in a
++            // present body keep their original status.
++            let Json(req) = body.map_err(|rejection| {
++                if rejection.status() == StatusCode::UNSUPPORTED_MEDIA_TYPE {
++                    ApiError::Unauthorized("Missing refresh token".into())
++                } else {
++                    ApiError::from(rejection)
++                }
++            })?;
+             (req.token, false)
+         }
+     };
 diff --git a/crates/aionui-auth/tests/route_tests.rs b/crates/aionui-auth/tests/route_tests.rs
-index a3977a4..0f0a199 100644
+index a3977a4..27c7fcc 100644
 --- a/crates/aionui-auth/tests/route_tests.rs
 +++ b/crates/aionui-auth/tests/route_tests.rs
 @@ -325,6 +325,31 @@ async fn t4_4_login_missing_fields() {
@@ -146,6 +168,33 @@ index a3977a4..0f0a199 100644
 +
  #[tokio::test]
  async fn login_rejects_aionpro_mode() {
+     let (app, ctx) = test_app_with_options_and_hook(false, Some("bootstrap-secret"), true, None).await;
+@@ -704,6 +729,26 @@ async fn t9_3_refresh_missing_token() {
+     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+ }
+ 
++/// The browser refresh path posts with no body at all (the HttpOnly cookie is
++/// the credential). Without a refresh cookie that used to surface as the JSON
++/// extractor's 415 Unsupported Media Type, which clients read as a broken
++/// endpoint instead of an expired session — it must be 401.
++#[tokio::test]
++async fn t9_4_refresh_without_cookie_or_body_is_unauthorized() {
++    let (app, _ctx) = test_app().await;
++
++    let req = Request::builder()
++        .method("POST")
++        .uri("/api/auth/refresh")
++        .body(Body::empty())
++        .unwrap();
++    let resp = app.oneshot(req).await.unwrap();
++
++    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
++    let json = body_json(resp).await;
++    assert_eq!(json["code"], "UNAUTHORIZED");
++}
++
+ #[tokio::test]
+ async fn refresh_rejects_local_user_token_in_aionpro_mode() {
      let (app, ctx) = test_app_with_options_and_hook(false, Some("bootstrap-secret"), true, None).await;
 diff --git a/crates/aionui-db/src/lib.rs b/crates/aionui-db/src/lib.rs
 index a6c8fe9..b3e173e 100644
