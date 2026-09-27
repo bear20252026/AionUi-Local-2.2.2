@@ -203,5 +203,13 @@
   },
   "selectedCount": "{{count}} sélectionné(s)",
   "selectedSkills": "Compétences sélectionnées",
-  "aiAssistant": "Assistant IA"
+  "aiAssistant": "Assistant IA",
+  "errorBoundary": {
+    "title": "Une erreur est survenue",
+    "description": "L'interface a rencontré une erreur non gérée et a cessé de s'afficher. Rechargez la page ; si cela se reproduit, copiez les détails ci-dessous et envoyez-les au mainteneur.",
+    "reload": "Recharger la page",
+    "copy": "Copier les détails",
+    "copied": "Copié",
+    "details": "Détails de l'erreur"
+  }
 }

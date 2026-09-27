@@ -203,5 +203,13 @@
   },
   "selectedCount": "已選 {{count}}",
   "selectedSkills": "已選技能",
-  "aiAssistant": "AI 助手"
+  "aiAssistant": "AI 助手",
+  "errorBoundary": {
+    "title": "頁面發生錯誤",
+    "description": "介面遇到未處理的錯誤，已停止渲染。請重新載入頁面；若反覆出現，請複製下方錯誤資訊回報給維護者。",
+    "reload": "重新載入頁面",
+    "copy": "複製錯誤資訊",
+    "copied": "已複製",
+    "details": "錯誤詳情"
+  }
 }

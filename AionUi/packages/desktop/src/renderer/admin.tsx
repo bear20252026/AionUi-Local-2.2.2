@@ -31,6 +31,7 @@ import './services/i18n';
 import i18next from 'i18next';
 
 import { AdminApp } from './pages/admin/AdminApp';
+import AppErrorBoundary from './pages/AppErrorBoundary';
 
 // Arco's own widget strings (date pickers, pagination) are locale-scoped; every
 // visible string in the console itself comes from i18next, so anything outside
@@ -48,7 +49,9 @@ if (!container) {
 }
 
 createRoot(container).render(
-  <ConfigProvider locale={ARCO_LOCALES[i18next.resolvedLanguage ?? ''] ?? enUS}>
-    <AdminApp />
-  </ConfigProvider>
+  <AppErrorBoundary>
+    <ConfigProvider locale={ARCO_LOCALES[i18next.resolvedLanguage ?? ''] ?? enUS}>
+      <AdminApp />
+    </ConfigProvider>
+  </AppErrorBoundary>
 );

@@ -203,5 +203,13 @@
   },
   "selectedCount": "Selected {{count}}",
   "selectedSkills": "Selected skills",
-  "aiAssistant": "AI Assistant"
+  "aiAssistant": "AI Assistant",
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "The interface hit an unhandled error and stopped rendering. Reload the page; if it keeps happening, copy the details below and send them to the maintainer.",
+    "reload": "Reload the page",
+    "copy": "Copy error details",
+    "copied": "Copied",
+    "details": "Error details"
+  }
 }

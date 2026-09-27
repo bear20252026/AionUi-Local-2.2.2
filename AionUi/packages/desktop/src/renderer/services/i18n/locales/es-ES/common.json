@@ -203,5 +203,13 @@
   "goBack": "Back",
   "selectedCount": "{{count}} seleccionado(s)",
   "selectedSkills": "Habilidades seleccionadas",
-  "aiAssistant": "Asistente de IA"
+  "aiAssistant": "Asistente de IA",
+  "errorBoundary": {
+    "title": "Algo salió mal",
+    "description": "La interfaz encontró un error no controlado y dejó de renderizar. Recarga la página; si se repite, copia los detalles de abajo y envíalos al responsable.",
+    "reload": "Recargar la página",
+    "copy": "Copiar detalles del error",
+    "copied": "Copiado",
+    "details": "Detalles del error"
+  }
 }

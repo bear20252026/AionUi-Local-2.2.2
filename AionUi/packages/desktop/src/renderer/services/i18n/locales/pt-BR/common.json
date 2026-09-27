@@ -203,5 +203,13 @@
   },
   "selectedCount": "{{count}} selecionado(s)",
   "selectedSkills": "Habilidades selecionadas",
-  "aiAssistant": "Assistente de IA"
+  "aiAssistant": "Assistente de IA",
+  "errorBoundary": {
+    "title": "Algo deu errado",
+    "description": "A interface encontrou um erro não tratado e parou de renderizar. Recarregue a página; se persistir, copie os detalhes abaixo e envie ao mantenedor.",
+    "reload": "Recarregar a página",
+    "copy": "Copiar detalhes do erro",
+    "copied": "Copiado",
+    "details": "Detalhes do erro"
+  }
 }

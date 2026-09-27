@@ -203,5 +203,13 @@
   },
   "selectedCount": "{{count}} seçili",
   "selectedSkills": "Seçili beceriler",
-  "aiAssistant": "Yapay Zekâ Asistanı"
+  "aiAssistant": "Yapay Zekâ Asistanı",
+  "errorBoundary": {
+    "title": "Bir şeyler ters gitti",
+    "description": "Arayüz işlenmemiş bir hata nedeniyle çizilmeyi durdurdu. Sayfayı yenileyin; tekrarlarsa aşağıdaki ayrıntıları kopyalayıp geliştiriciye iletin.",
+    "reload": "Sayfayı yenile",
+    "copy": "Hata ayrıntılarını kopyala",
+    "copied": "Kopyalandı",
+    "details": "Hata ayrıntıları"
+  }
 }

@@ -102,6 +102,7 @@ import BackendStartupGate from './components/layout/BackendStartupGate';
 import GpuAutoDisableNotice from './components/layout/GpuAutoDisableNotice';
 import Layout from './components/layout/Layout';
 import Router from './components/layout/Router';
+import AppErrorBoundary from './pages/AppErrorBoundary';
 import Sider from './components/layout/Sider';
 import { useAuth } from './hooks/context/AuthContext';
 import { ConversationHistoryProvider } from './hooks/context/ConversationHistoryContext';
@@ -490,21 +491,25 @@ void registerPwa();
 
 const root = createRoot(document.getElementById('root')!);
 root.render(
-  <BackendStartupGate
-    renderStarting={() => (
-      <Config>
-        <BackendStartingView />
-      </Config>
-    )}
-    renderFailure={(failure) => (
-      <Config>
-        <BackendStartupFailureDialog failure={failure} />
-      </Config>
-    )}
-    renderApp={() => (
-      <AppProviders>
-        <App />
-      </AppProviders>
-    )}
-  />
+  // Outermost guard: without it any render error below unmounts the whole tree
+  // and leaves the user on a blank page with no message and no recovery.
+  <AppErrorBoundary>
+    <BackendStartupGate
+      renderStarting={() => (
+        <Config>
+          <BackendStartingView />
+        </Config>
+      )}
+      renderFailure={(failure) => (
+        <Config>
+          <BackendStartupFailureDialog failure={failure} />
+        </Config>
+      )}
+      renderApp={() => (
+        <AppProviders>
+          <App />
+        </AppProviders>
+      )}
+    />
+  </AppErrorBoundary>
 );

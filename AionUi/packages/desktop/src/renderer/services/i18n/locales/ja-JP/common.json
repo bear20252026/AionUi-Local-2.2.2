@@ -203,5 +203,13 @@
   },
   "selectedCount": "選択済み {{count}}",
   "selectedSkills": "選択済みスキル",
-  "aiAssistant": "AI アシスタント"
+  "aiAssistant": "AI アシスタント",
+  "errorBoundary": {
+    "title": "エラーが発生しました",
+    "description": "未処理のエラーにより画面の描画が停止しました。ページを再読み込みしてください。繰り返される場合は、下の詳細をコピーして管理者に送ってください。",
+    "reload": "ページを再読み込む",
+    "copy": "エラー詳細をコピー",
+    "copied": "コピーしました",
+    "details": "エラー詳細"
+  }
 }

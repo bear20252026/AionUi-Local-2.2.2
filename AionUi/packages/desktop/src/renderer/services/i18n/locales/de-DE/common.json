@@ -203,5 +203,13 @@
   "goBack": "Zurück",
   "selectedCount": "{{count}} ausgewählt",
   "selectedSkills": "Ausgewählte Skills",
-  "aiAssistant": "KI-Assistent"
+  "aiAssistant": "KI-Assistent",
+  "errorBoundary": {
+    "title": "Etwas ist schiefgelaufen",
+    "description": "Die Oberfläche ist an einem unbehandelten Fehler gestoppt. Laden Sie die Seite neu; falls es wiederholt auftritt, kopieren Sie die Details unten und senden Sie sie an den Maintainer.",
+    "reload": "Seite neu laden",
+    "copy": "Fehlerdetails kopieren",
+    "copied": "Kopiert",
+    "details": "Fehlerdetails"
+  }
 }

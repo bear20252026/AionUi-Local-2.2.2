@@ -203,5 +203,13 @@
   },
   "selectedCount": "已选 {{count}}",
   "selectedSkills": "已选技能",
-  "aiAssistant": "AI 助手"
+  "aiAssistant": "AI 助手",
+  "errorBoundary": {
+    "title": "页面出错了",
+    "description": "界面遇到未处理的错误，已停止渲染。请重新加载页面；如果反复出现，请复制下方错误信息反馈给维护者。",
+    "reload": "重新加载页面",
+    "copy": "复制错误信息",
+    "copied": "已复制",
+    "details": "错误详情"
+  }
 }
