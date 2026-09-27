@@ -30,8 +30,8 @@ pub use models::{
     ExternalUserProjection, FolderRow, OrderItemType, OrderScene, ProjectExplorerRow, ProjectKind, ProjectRow, Role,
     SkillImportRecordRow, SkillRow, UpdateAgentAvailabilitySnapshotParams, UpdateAgentHandshakeParams,
     UpdateAssistantParams, UpsertAgentMetadataParams, UpsertAssistantDefinitionParams, UpsertAssistantOverlayParams,
-    UpsertAssistantPreferenceParams, UpsertConversationAssistantSnapshotParams, UpsertOverrideParams, UserOrderRow,
-    UserStatus, UserType,
+    UpsertAssistantPreferenceParams, UpsertConversationAssistantSnapshotParams, UpsertOverrideParams, User,
+    UserOrderRow, UserStatus, UserType,
 };
 pub use repository::channel::UpdatePluginStatusParams;
 pub use repository::conversation::{

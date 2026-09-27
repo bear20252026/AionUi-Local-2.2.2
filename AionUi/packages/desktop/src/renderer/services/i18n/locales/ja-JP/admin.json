@@ -31,7 +31,12 @@
     "adminTag": "管理者",
     "active": "有効",
     "disabled": "無効",
-    "empty": "ユーザーがありません"
+    "empty": "ユーザーがありません",
+    "createUser": "ユーザー作成",
+    "resetPassword": "パスワード再設定",
+    "disable": "無効化",
+    "enable": "有効化",
+    "actions": "操作"
   },
   "providers": {
     "title": "モデルプロバイダー",
@@ -75,6 +80,32 @@
   "message": {
     "created": "モデルプロバイダーを作成しました",
     "updated": "モデルプロバイダーを更新しました",
-    "deleted": "削除しました"
+    "deleted": "削除しました",
+    "userCreated": "ユーザーを作成しました",
+    "passwordReset": "パスワードを再設定しました（ログインは全て無効化）",
+    "statusChanged": "ステータスを更新しました",
+    "userOpFailed": "操作に失敗しました。"
+  },
+  "userModal": {
+    "createTitle": "ユーザー作成",
+    "okCreate": "作成",
+    "resetTitle": "パスワード再設定 · {{name}}",
+    "okReset": "再設定",
+    "username": "ユーザー名",
+    "usernamePlaceholder": "3〜32文字：英数字、-、_",
+    "usernameRequired": "ユーザー名を入力してください",
+    "usernameInvalid": "英数字、-、_ のみ（3〜32文字、先頭と末尾に - _ は不可）",
+    "password": "パスワード",
+    "passwordPlaceholder": "8文字以上",
+    "passwordRequired": "パスワードを入力してください",
+    "passwordInvalid": "8文字以上",
+    "passwordHint": "8文字以上。作成後にユーザーへお知らせください。"
+  },
+  "userDialog": {
+    "disableTitle": "アカウント無効化",
+    "disableContent": "「{{name}}」を無効化しますか？すべてのログインは即座に無効になります。",
+    "enableTitle": "アカウント有効化",
+    "enableContent": "「{{name}}」のログインを復帰させますか？",
+    "ok": "確認"
   }
 }

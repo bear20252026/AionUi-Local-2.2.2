@@ -31,7 +31,12 @@
     "adminTag": "مدیر",
     "active": "فعال",
     "disabled": "غیرفعال",
-    "empty": "بدون کاربر"
+    "empty": "بدون کاربر",
+    "createUser": "ایجاد کاربر",
+    "resetPassword": "بازنشانی گذرواژه",
+    "disable": "غیرفعال",
+    "enable": "فعال",
+    "actions": "عملیات"
   },
   "providers": {
     "title": "ارائه‌دهندگان مدل",
@@ -75,6 +80,32 @@
   "message": {
     "created": "ارائه‌دهنده مدل ایجاد شد",
     "updated": "ارائه‌دهنده مدل به‌روزرسانی شد",
-    "deleted": "حذف شد"
+    "deleted": "حذف شد",
+    "userCreated": "کاربر ایجاد شد",
+    "passwordReset": "گذرواژه بازنشانی شد؛ نشست‌ها خارج شدند",
+    "statusChanged": "وضعیت به‌روزرسانی شد",
+    "userOpFailed": "عملیات ناموفق بود."
+  },
+  "userModal": {
+    "createTitle": "ایجاد کاربر",
+    "okCreate": "ایجاد",
+    "resetTitle": "بازنشانی گذرواژه · {{name}}",
+    "okReset": "بازنشانی",
+    "username": "نام کاربری",
+    "usernamePlaceholder": "۳ تا ۳۲ نویسه: حروف، رقم، - یا _",
+    "usernameRequired": "نام کاربری را وارد کنید",
+    "usernameInvalid": "فقط حروف، رقم، - و _؛ ۳ تا ۳۲ نویسه؛ با - یا _ شروع یا پایان نگیرد",
+    "password": "گذرواژه",
+    "passwordPlaceholder": "دست‌کم ۸ نویسه",
+    "passwordRequired": "گذرواژه را وارد کنید",
+    "passwordInvalid": "دست‌کم ۸ نویسه",
+    "passwordHint": "دست‌کم ۸ نویسه؛ پس از ایجاد با کاربر در میان بگذارید."
+  },
+  "userDialog": {
+    "disableTitle": "غیرفعال‌کردن حساب",
+    "disableContent": "«{{name}}» غیرفعال شود؟ همه نشست‌های ورود او بلافاصله خارج می‌شود.",
+    "enableTitle": "فعال‌کردن حساب",
+    "enableContent": "ورود «{{name}}» برقرار شود؟",
+    "ok": "تأیید"
   }
 }

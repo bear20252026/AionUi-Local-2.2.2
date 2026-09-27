@@ -31,7 +31,12 @@
     "adminTag": "Administrador",
     "active": "Activo",
     "disabled": "Inactivo",
-    "empty": "No hay usuarios"
+    "empty": "No hay usuarios",
+    "createUser": "Crear usuario",
+    "resetPassword": "Restablecer contraseña",
+    "disable": "Desactivar",
+    "enable": "Activar",
+    "actions": "Acciones"
   },
   "providers": {
     "title": "Proveedores de modelos",
@@ -75,6 +80,32 @@
   "message": {
     "created": "Proveedor de modelos creado",
     "updated": "Proveedor de modelos actualizado",
-    "deleted": "Eliminado"
+    "deleted": "Eliminado",
+    "userCreated": "Usuario creado",
+    "passwordReset": "Contraseña restablecida; sus sesiones se cerraron",
+    "statusChanged": "Estado actualizado",
+    "userOpFailed": "Error en la operación."
+  },
+  "userModal": {
+    "createTitle": "Crear usuario",
+    "okCreate": "Crear",
+    "resetTitle": "Restablecer contraseña · {{name}}",
+    "okReset": "Restablecer",
+    "username": "Nombre de usuario",
+    "usernamePlaceholder": "3–32 caracteres: letras, dígitos, - o _",
+    "usernameRequired": "Introduce el nombre de usuario",
+    "usernameInvalid": "Solo letras, dígitos, - y _; 3–32 caracteres; sin empezar o terminar con - o _",
+    "password": "Contraseña",
+    "passwordPlaceholder": "Al menos 8 caracteres",
+    "passwordRequired": "Introduce la contraseña",
+    "passwordInvalid": "Al menos 8 caracteres",
+    "passwordHint": "Al menos 8 caracteres. Comunícasela al usuario después de crearlo."
+  },
+  "userDialog": {
+    "disableTitle": "Desactivar cuenta",
+    "disableContent": "¿Desactivar a «{{name}}»? Todas sus sesiones se cerrarán de inmediato.",
+    "enableTitle": "Activar cuenta",
+    "enableContent": "¿Restaurar el acceso de «{{name}}»?",
+    "ok": "Confirmar"
   }
 }

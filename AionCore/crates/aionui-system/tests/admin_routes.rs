@@ -47,6 +47,12 @@ fn build_state(db: &aionui_db::Database) -> SystemRouterState {
 }
 
 async fn setup() -> axum::Router {
+    setup_with_pool().await.0
+}
+
+/// Same as [`setup`] but also hands back the pool so tests can assert on
+/// raw rows (e.g. `session_generation` bumps).
+async fn setup_with_pool() -> (axum::Router, sqlx::SqlitePool) {
     let db = init_database_memory().await.unwrap();
     // `init_database_memory` already seeds `system_default_user` (username `admin`),
     // so only the second account has to be inserted here.
@@ -59,7 +65,7 @@ async fn setup() -> axum::Router {
     .execute(db.pool())
     .await
     .unwrap();
-    system_routes(build_state(&db))
+    (system_routes(build_state(&db)), db.pool().clone())
 }
 
 async fn body_json(resp: axum::response::Response) -> serde_json::Value {
@@ -306,4 +312,264 @@ async fn guest_cannot_see_own_key_in_plaintext() {
         .await
         .unwrap();
     assert_eq!(body_json(resp).await["data"][0]["api_key"], MASK);
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/users — create a local account
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn admin_creates_local_user_via_console() {
+    let app = setup().await;
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "POST",
+            "/api/admin/users",
+            Some(json!({ "username": "bob", "password": "Str0ngPass!23" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let json = body_json(resp).await;
+    assert_eq!(json["data"]["username"], "bob");
+    assert_eq!(json["data"]["user_type"], "local");
+    assert_eq!(json["data"]["status"], "active");
+    assert_eq!(json["data"]["is_primary"], false);
+
+    // The new account shows up in the listing with no secret material.
+    let resp = app
+        .oneshot(request_for_user(ADMIN_ID, "GET", "/api/admin/users", None))
+        .await
+        .unwrap();
+    let json = body_json(resp).await;
+    let users = json["data"].as_array().unwrap();
+    assert_eq!(users.len(), 3);
+    assert!(users.iter().any(|u| u["username"] == "bob"));
+    assert!(!json.to_string().contains("password_hash"));
+}
+
+#[tokio::test]
+async fn admin_create_user_rejects_duplicate_weak_and_strangers() {
+    let app = setup().await;
+
+    // Only the admin may create accounts.
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            GUEST_ID,
+            "POST",
+            "/api/admin/users",
+            Some(json!({ "username": "bob", "password": "Str0ngPass!23" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // Password rules come from the shared account service (8+ chars).
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "POST",
+            "/api/admin/users",
+            Some(json!({ "username": "carol", "password": "short" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // Username rules: 3+ chars, [a-zA-Z0-9_-].
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "POST",
+            "/api/admin/users",
+            Some(json!({ "username": "ab", "password": "Str0ngPass!23" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // A taken username (incl. the seed `admin`) is a conflict, not a clobber.
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "POST",
+            "/api/admin/users",
+            Some(json!({ "username": "bob", "password": "Str0ngPass!23" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let resp = app
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "POST",
+            "/api/admin/users",
+            Some(json!({ "username": "bob", "password": "OtherPass!23" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+// ---------------------------------------------------------------------------
+// PUT /api/admin/users/{id}/password — reset + revoke sessions
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn admin_resets_password_and_revokes_sessions() {
+    let (app, pool) = setup_with_pool().await;
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "PUT",
+            &format!("/api/admin/users/{GUEST_ID}/password"),
+            Some(json!({ "password": "FreshPass!23" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(body_json(resp).await["data"]["username"], "guest");
+
+    // The password change must bump session_generation so old logins die.
+    let generation: i64 = sqlx::query_scalar("SELECT session_generation FROM users WHERE id = ?")
+        .bind(GUEST_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(generation, 1);
+
+    // Guards: wrong admin (403), missing user (404), weak password (400).
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            GUEST_ID,
+            "PUT",
+            &format!("/api/admin/users/{ADMIN_ID}/password"),
+            Some(json!({ "password": "EvilPass!23" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "PUT",
+            "/api/admin/users/nope/password",
+            Some(json!({ "password": "FreshPass!23" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let resp = app
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "PUT",
+            &format!("/api/admin/users/{GUEST_ID}/password"),
+            Some(json!({ "password": "short" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+// ---------------------------------------------------------------------------
+// PUT /api/admin/users/{id}/status — disable / enable
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn admin_disables_and_reenables_guest() {
+    let app = setup().await;
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "PUT",
+            &format!("/api/admin/users/{GUEST_ID}/status"),
+            Some(json!({ "status": "disabled" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(body_json(resp).await["data"]["status"], "disabled");
+
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "PUT",
+            &format!("/api/admin/users/{GUEST_ID}/status"),
+            Some(json!({ "status": "active" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(body_json(resp).await["data"]["status"], "active");
+}
+
+#[tokio::test]
+async fn admin_cannot_disable_primary_or_let_others_manage() {
+    let (app, pool) = setup_with_pool().await;
+
+    // Lockout protection: the primary admin cannot disable itself.
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "PUT",
+            &format!("/api/admin/users/{ADMIN_ID}/status"),
+            Some(json!({ "status": "disabled" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let status: String = sqlx::query_scalar("SELECT status FROM users WHERE id = ?")
+        .bind(ADMIN_ID)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "active");
+
+    // Non-admins can neither disable others nor re-enable themselves.
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            GUEST_ID,
+            "PUT",
+            &format!("/api/admin/users/{ADMIN_ID}/status"),
+            Some(json!({ "status": "disabled" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let resp = app
+        .clone()
+        .oneshot(request_for_user(
+            GUEST_ID,
+            "PUT",
+            &format!("/api/admin/users/{GUEST_ID}/status"),
+            Some(json!({ "status": "active" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    // Unknown target → 404.
+    let resp = app
+        .oneshot(request_for_user(
+            ADMIN_ID,
+            "PUT",
+            "/api/admin/users/nope/status",
+            Some(json!({ "status": "disabled" })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }

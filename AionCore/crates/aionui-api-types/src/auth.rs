@@ -27,6 +27,36 @@ pub struct AdminUserResponse {
     pub is_primary: bool,
 }
 
+/// Create-user request body for `POST /api/admin/users`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdminCreateUserRequest {
+    pub username: String,
+    pub password: String,
+}
+
+/// Reset-password request body for `PUT /api/admin/users/{user_id}/password`.
+///
+/// No current-password field: the caller is the authenticated admin acting on
+/// another account, so the old secret is deliberately not required.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdminResetPasswordRequest {
+    pub password: String,
+}
+
+/// Set-status request body for `PUT /api/admin/users/{user_id}/status`.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct AdminSetStatusRequest {
+    pub status: AdminUserStatus,
+}
+
+/// Target status for `PUT /api/admin/users/{user_id}/status`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AdminUserStatus {
+    Active,
+    Disabled,
+}
+
 /// Login request body for `POST /login`.
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {

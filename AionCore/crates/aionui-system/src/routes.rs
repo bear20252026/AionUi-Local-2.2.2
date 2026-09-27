@@ -9,15 +9,16 @@ use axum::http::StatusCode;
 use axum::routing::{delete, get, post, put};
 
 use aionui_api_types::{
-    AdminUserResponse, ApiResponse, ClientPreferencesResponse, CreateProviderRequest, CurrentUserResponse,
-    DetectProtocolRequest, EnsureNodeRuntimeRequest, EnsureNodeRuntimeResponse, FeedbackDiagnosticsQuery,
-    FeedbackDiagnosticsResponse, FetchModelsAnonymousRequest, FetchModelsRequest, FetchModelsResponse,
-    ProtocolDetectionResponse, ProviderResponse, SystemInfoResponse, SystemSettingsResponse, UpdateCheckRequest,
-    UpdateCheckResult, UpdateClientPreferencesRequest, UpdateProviderRequest, UpdateSettingsRequest,
+    AdminCreateUserRequest, AdminResetPasswordRequest, AdminSetStatusRequest, AdminUserResponse, AdminUserStatus,
+    ApiResponse, ClientPreferencesResponse, CreateProviderRequest, CurrentUserResponse, DetectProtocolRequest,
+    EnsureNodeRuntimeRequest, EnsureNodeRuntimeResponse, FeedbackDiagnosticsQuery, FeedbackDiagnosticsResponse,
+    FetchModelsAnonymousRequest, FetchModelsRequest, FetchModelsResponse, ProtocolDetectionResponse, ProviderResponse,
+    SystemInfoResponse, SystemSettingsResponse, UpdateCheckRequest, UpdateCheckResult, UpdateClientPreferencesRequest,
+    UpdateProviderRequest, UpdateSettingsRequest,
 };
-use aionui_auth::CurrentUser;
+use aionui_auth::{AccountError, CurrentUser, PasswordOutcome, create_local_user, set_local_password};
 use aionui_common::ApiError;
-use aionui_db::IUserRepository;
+use aionui_db::{IUserRepository, User, UserStatus, UserType};
 
 use crate::client_pref::ClientPrefService;
 use crate::diagnostics::FeedbackDiagnosticsService;
@@ -79,6 +80,10 @@ impl From<SystemError> for ApiError {
 /// - `POST /api/system/check-update`         — check GitHub for new versions
 /// - `POST /api/system/ensure-node-runtime`  — prepare managed Node runtime
 /// - `GET  /api/system/diagnostics/feedback-report` — collect sanitized feedback diagnostics
+/// - `GET  /api/admin/users`                 — list local accounts (admin only)
+/// - `POST /api/admin/users`                 — create a local account (admin only)
+/// - `PUT  /api/admin/users/:user_id/password` — reset a password (admin only; revokes sessions)
+/// - `PUT  /api/admin/users/:user_id/status` — enable/disable an account (admin only)
 pub fn system_routes(state: SystemRouterState) -> Router {
     Router::new()
         .route("/api/settings", get(get_settings).patch(update_settings))
@@ -94,10 +99,13 @@ pub fn system_routes(state: SystemRouterState) -> Router {
         .route("/api/providers/fetch-models", post(fetch_models_anonymous))
         .route("/api/providers/{id}", delete(delete_provider).put(update_provider))
         .route("/api/providers/{id}/models", post(fetch_models))
-        // Admin console (multi-user WebUI): manage users' providers on their
-        // behalf. Gated to the seed admin inside every handler; the router
-        // itself is behind the authenticated layer like the rest of this file.
-        .route("/api/admin/users", get(list_admin_users))
+        // Admin console (multi-user WebUI): manage local accounts and their
+        // providers on their behalf. Gated to the seed admin inside every
+        // handler; the router itself is behind the authenticated layer like
+        // the rest of this file.
+        .route("/api/admin/users", get(list_admin_users).post(admin_create_user))
+        .route("/api/admin/users/{user_id}/password", put(admin_reset_password))
+        .route("/api/admin/users/{user_id}/status", put(admin_set_status))
         .route(
             "/api/admin/users/{user_id}/providers",
             get(admin_list_providers).post(admin_create_provider),
@@ -366,28 +374,135 @@ async fn ensure_user_exists(state: &SystemRouterState, user_id: &str) -> Result<
     Ok(())
 }
 
+/// Map the shared local-account error into API errors. Validation failures are
+/// client mistakes (400); a taken username is a conflict (409).
+fn account_err(error: AccountError) -> ApiError {
+    match error {
+        AccountError::InvalidUsername(reason) | AccountError::WeakPassword(reason) => ApiError::BadRequest(reason),
+        AccountError::AlreadyExists(name) => ApiError::Conflict(format!("a user named {name} already exists")),
+        AccountError::Hash => ApiError::Internal("failed to hash password".into()),
+        AccountError::Db(db_error) => db_err(db_error),
+    }
+}
+
+/// Project a `User` row into its public admin-console shape (no secrets).
+fn admin_user_response(user: User) -> AdminUserResponse {
+    AdminUserResponse {
+        is_primary: user.id == ADMIN_USER_ID,
+        id: user.id,
+        username: user.username.unwrap_or_default(),
+        user_type: user.user_type.as_str().to_owned(),
+        status: user.status.as_str().to_owned(),
+        created_at: user.created_at,
+        last_login: user.last_login,
+    }
+}
+
+/// Fetch a user row or 404 — for admin operations that act on an existing id.
+async fn require_user(state: &SystemRouterState, user_id: &str) -> Result<User, ApiError> {
+    state
+        .user_repo
+        .find_by_id(user_id)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| ApiError::NotFound("User not found".into()))
+}
+
 /// `GET /api/admin/users` — list all local accounts for the admin console.
 async fn list_admin_users(
     State(state): State<SystemRouterState>,
     Extension(user): Extension<CurrentUser>,
 ) -> Result<Json<ApiResponse<Vec<AdminUserResponse>>>, ApiError> {
     require_admin(&user)?;
-    let primary = state.user_repo.get_primary_webui_user().await.map_err(db_err)?;
-    let primary_id = primary.map(|u| u.id);
     let users = state.user_repo.list_users().await.map_err(db_err)?;
-    let items = users
-        .into_iter()
-        .map(|u| AdminUserResponse {
-            is_primary: Some(u.id.clone()) == primary_id,
-            id: u.id,
-            username: u.username.unwrap_or_default(),
-            user_type: u.user_type.as_str().to_owned(),
-            status: u.status.as_str().to_owned(),
-            created_at: u.created_at,
-            last_login: u.last_login,
-        })
-        .collect();
+    let items = users.into_iter().map(admin_user_response).collect();
     Ok(Json(ApiResponse::ok(items)))
+}
+
+/// `POST /api/admin/users` — create a local account (username + password).
+///
+/// Delegates validation/hashing to `create_local_user` so the console follows
+/// exactly the same rules as the bootstrap CLI. The new account starts active
+/// with an empty password history.
+async fn admin_create_user(
+    State(state): State<SystemRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    body: Result<Json<AdminCreateUserRequest>, JsonRejection>,
+) -> Result<(StatusCode, Json<ApiResponse<AdminUserResponse>>), ApiError> {
+    require_admin(&user)?;
+    let Json(req) = body.map_err(ApiError::from)?;
+    let created = match create_local_user(state.user_repo.as_ref(), &req.username, &req.password)
+        .await
+        .map_err(account_err)?
+    {
+        PasswordOutcome::Created { id, .. } => id,
+        // create_local_user only returns Created; the other variants are the
+        // set-password (upsert) contract, unreachable here.
+        PasswordOutcome::DefaultUser | PasswordOutcome::UpdatedExisting { .. } => {
+            return Err(ApiError::Internal("unexpected account outcome".into()));
+        }
+    };
+    let fresh = require_user(&state, &created).await?;
+    Ok((StatusCode::CREATED, Json(ApiResponse::ok(admin_user_response(fresh)))))
+}
+
+/// `PUT /api/admin/users/{user_id}/password` — set a target account's password.
+///
+/// Delegates to `set_local_password` (validate + bcrypt on a blocking thread),
+/// then bumps `session_generation` so every live login of that user is revoked
+/// and must re-authenticate with the new secret.
+async fn admin_reset_password(
+    State(state): State<SystemRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(user_id): Path<String>,
+    body: Result<Json<AdminResetPasswordRequest>, JsonRejection>,
+) -> Result<Json<ApiResponse<AdminUserResponse>>, ApiError> {
+    require_admin(&user)?;
+    let Json(req) = body.map_err(ApiError::from)?;
+    let target = require_user(&state, &user_id).await?;
+    if target.user_type != UserType::Local {
+        return Err(ApiError::BadRequest("Only local accounts carry passwords".into()));
+    }
+    let username = target
+        .username
+        .clone()
+        .ok_or_else(|| ApiError::BadRequest("Target account has no username".into()))?;
+    set_local_password(state.user_repo.as_ref(), Some(&username), &req.password)
+        .await
+        .map_err(account_err)?;
+    state
+        .user_repo
+        .increment_session_generation(&target.id)
+        .await
+        .map_err(db_err)?;
+    let fresh = require_user(&state, &target.id).await?;
+    Ok(Json(ApiResponse::ok(admin_user_response(fresh))))
+}
+
+/// `PUT /api/admin/users/{user_id}/status` — enable or disable an account.
+///
+/// Disabling revokes the account's live sessions (repository-side
+/// `session_generation` bump). The primary admin cannot be disabled — that is
+/// the only lockout-proof console identity.
+async fn admin_set_status(
+    State(state): State<SystemRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(user_id): Path<String>,
+    body: Result<Json<AdminSetStatusRequest>, JsonRejection>,
+) -> Result<Json<ApiResponse<AdminUserResponse>>, ApiError> {
+    require_admin(&user)?;
+    let Json(req) = body.map_err(ApiError::from)?;
+    let target = require_user(&state, &user_id).await?;
+    if target.id == ADMIN_USER_ID && req.status == AdminUserStatus::Disabled {
+        return Err(ApiError::BadRequest("The primary admin account cannot be disabled".into()));
+    }
+    let status = match req.status {
+        AdminUserStatus::Active => UserStatus::Active,
+        AdminUserStatus::Disabled => UserStatus::Disabled,
+    };
+    state.user_repo.set_status(&target.id, status).await.map_err(db_err)?;
+    let fresh = require_user(&state, &target.id).await?;
+    Ok(Json(ApiResponse::ok(admin_user_response(fresh))))
 }
 
 /// `GET /api/admin/users/{user_id}/providers` — providers of a target user,

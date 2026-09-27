@@ -31,7 +31,12 @@
     "adminTag": "管理员",
     "active": "启用",
     "disabled": "停用",
-    "empty": "暂无用户"
+    "empty": "暂无用户",
+    "createUser": "新建用户",
+    "resetPassword": "重置密码",
+    "disable": "停用",
+    "enable": "启用",
+    "actions": "操作"
   },
   "providers": {
     "title": "模型服务",
@@ -75,6 +80,32 @@
   "message": {
     "created": "已为该用户创建模型服务",
     "updated": "模型服务已更新",
-    "deleted": "已删除"
+    "deleted": "已删除",
+    "userCreated": "用户已创建",
+    "passwordReset": "密码已重置，该账号的登录已全部失效",
+    "statusChanged": "状态已更新",
+    "userOpFailed": "操作失败。"
+  },
+  "userModal": {
+    "createTitle": "新建用户",
+    "okCreate": "创建",
+    "resetTitle": "重置密码 · {{name}}",
+    "okReset": "重置",
+    "username": "用户名",
+    "usernamePlaceholder": "3–32 位，字母、数字、- 或 _",
+    "usernameRequired": "请输入用户名",
+    "usernameInvalid": "仅限字母、数字、-、_，3–32 位，且不以 - 或 _ 开头或结尾",
+    "password": "密码",
+    "passwordPlaceholder": "至少 8 位",
+    "passwordRequired": "请输入密码",
+    "passwordInvalid": "至少 8 位",
+    "passwordHint": "至少 8 位，创建后请告知该用户。"
+  },
+  "userDialog": {
+    "disableTitle": "停用账号",
+    "disableContent": "确定停用「{{name}}」吗？该账号的所有登录会话将立即失效。",
+    "enableTitle": "启用账号",
+    "enableContent": "确定恢复「{{name}}」的登录吗？",
+    "ok": "确认"
   }
 }

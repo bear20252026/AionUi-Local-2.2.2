@@ -31,7 +31,12 @@
     "adminTag": "관리자",
     "active": "활성",
     "disabled": "비활성",
-    "empty": "사용자가 없습니다"
+    "empty": "사용자가 없습니다",
+    "createUser": "사용자 추가",
+    "resetPassword": "비밀번호 재설정",
+    "disable": "비활성화",
+    "enable": "활성화",
+    "actions": "작업"
   },
   "providers": {
     "title": "모델 프로바이더",
@@ -75,6 +80,32 @@
   "message": {
     "created": "모델 프로바이더를 만들었습니다",
     "updated": "모델 프로바이더를 업데이트했습니다",
-    "deleted": "삭제했습니다"
+    "deleted": "삭제했습니다",
+    "userCreated": "사용자가 생성되었습니다",
+    "passwordReset": "비밀번호가 재설정되어 로그인이 모두 종료되었습니다",
+    "statusChanged": "상태가 업데이트되었습니다",
+    "userOpFailed": "작업에 실패했습니다."
+  },
+  "userModal": {
+    "createTitle": "사용자 추가",
+    "okCreate": "추가",
+    "resetTitle": "비밀번호 재설정 · {{name}}",
+    "okReset": "재설정",
+    "username": "사용자 이름",
+    "usernamePlaceholder": "3–32자: 영문, 숫자, -, _",
+    "usernameRequired": "사용자 이름을 입력하세요",
+    "usernameInvalid": "영문, 숫자, -, _만 가능(3–32자, 시작/끝에 - _ 불가)",
+    "password": "비밀번호",
+    "passwordPlaceholder": "8자 이상",
+    "passwordRequired": "비밀번호를 입력하세요",
+    "passwordInvalid": "8자 이상",
+    "passwordHint": "8자 이상. 생성 후 사용자에게 알려 주세요."
+  },
+  "userDialog": {
+    "disableTitle": "계정 비활성화",
+    "disableContent": "\"{{name}}\"을(를) 비활성화할까요? 모든 로그인 세션이 즉시 종료됩니다.",
+    "enableTitle": "계정 활성화",
+    "enableContent": "\"{{name}}\"의 로그인을 복원할까요?",
+    "ok": "확인"
   }
 }

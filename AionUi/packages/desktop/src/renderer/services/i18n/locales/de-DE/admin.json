@@ -31,7 +31,12 @@
     "adminTag": "Administrator",
     "active": "Aktiv",
     "disabled": "Deaktiviert",
-    "empty": "Keine Benutzer"
+    "empty": "Keine Benutzer",
+    "createUser": "Benutzer erstellen",
+    "resetPassword": "Passwort zurücksetzen",
+    "disable": "Deaktivieren",
+    "enable": "Aktivieren",
+    "actions": "Aktionen"
   },
   "providers": {
     "title": "Modell-Anbieter",
@@ -75,6 +80,32 @@
   "message": {
     "created": "Modell-Anbieter erstellt",
     "updated": "Modell-Anbieter aktualisiert",
-    "deleted": "Gelöscht"
+    "deleted": "Gelöscht",
+    "userCreated": "Benutzer erstellt",
+    "passwordReset": "Passwort zurückgesetzt — Sitzungen wurden abgemeldet",
+    "statusChanged": "Status aktualisiert",
+    "userOpFailed": "Vorgang fehlgeschlagen."
+  },
+  "userModal": {
+    "createTitle": "Benutzer erstellen",
+    "okCreate": "Erstellen",
+    "resetTitle": "Passwort zurücksetzen · {{name}}",
+    "okReset": "Zurücksetzen",
+    "username": "Benutzername",
+    "usernamePlaceholder": "3–32 Zeichen: Buchstaben, Ziffern, - oder _",
+    "usernameRequired": "Bitte Benutzernamen eingeben",
+    "usernameInvalid": "Nur Buchstaben, Ziffern, - und _; 3–32 Zeichen; nicht mit - oder _ beginnend oder endend",
+    "password": "Passwort",
+    "passwordPlaceholder": "Mindestens 8 Zeichen",
+    "passwordRequired": "Bitte Passwort eingeben",
+    "passwordInvalid": "Mindestens 8 Zeichen",
+    "passwordHint": "Mindestens 8 Zeichen. Teilen Sie es dem Benutzer danach mit."
+  },
+  "userDialog": {
+    "disableTitle": "Konto deaktivieren",
+    "disableContent": "„{{name}}\" wirklich deaktivieren? Alle Sitzungen werden sofort abgemeldet.",
+    "enableTitle": "Konto aktivieren",
+    "enableContent": "Anmeldung für „{{name}}\" wieder erlauben?",
+    "ok": "Bestätigen"
   }
 }

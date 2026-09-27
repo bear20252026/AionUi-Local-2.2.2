@@ -64,6 +64,13 @@ type GateState = 'loading' | 'anonymous' | 'forbidden' | 'ready';
 
 type ProviderDraft = { mode: 'create'; userId: string } | { mode: 'edit'; userId: string; provider: Provider } | null;
 
+type UserDraft = { mode: 'create' } | { mode: 'reset'; user: AdminUser } | null;
+
+type UserFormValues = {
+  username?: string;
+  password: string;
+};
+
 const PLATFORM_OPTIONS = ['openai', 'anthropic', 'deepseek', 'gemini', 'moonshot', 'qwen', 'ollama', 'custom'].map(
   (value) => ({ value, label: value })
 );
@@ -93,6 +100,8 @@ export function AdminApp() {
   const [providersLoading, setProvidersLoading] = useState(false);
   const [draft, setDraft] = useState<ProviderDraft>(null);
   const [saving, setSaving] = useState(false);
+  const [userDraft, setUserDraft] = useState<UserDraft>(null);
+  const [userSaving, setUserSaving] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -269,6 +278,81 @@ export function AdminApp() {
     }
   }, []);
 
+  // Surface a failed account operation: gate errors take over the screen, a
+  // validation/conflict rejection (400/409) shows the backend's own reason
+  // (e.g. "Password must be at least 8 characters"), anything else is generic.
+  const showUserOpError = useCallback(
+    (error: unknown) => {
+      const status = statusOf(error);
+      if (status === 401 || status === 403) {
+        handleGateError(error);
+        if (status === 403) Message.error(t('admin.notice.forbidden'));
+        return;
+      }
+      const backend = error instanceof BackendHttpError ? error.backendMessage : '';
+      Message.error(backend || t('admin.message.userOpFailed'));
+    },
+    [handleGateError, t]
+  );
+
+  const submitUser = useCallback(
+    async (values: UserFormValues) => {
+      if (!userDraft) return;
+      setUserSaving(true);
+      try {
+        if (userDraft.mode === 'create') {
+          const created = await httpPost<AdminUser, { username: string; password: string }>('/api/admin/users').invoke({
+            username: values.username ?? '',
+            password: values.password,
+          });
+          Message.success(t('admin.message.userCreated'));
+          setUserDraft(null);
+          await loadUsers();
+          if (created?.id) setSelectedUserId(created.id);
+        } else {
+          await httpPut<AdminUser, { password: string }>(
+            `/api/admin/users/${encodeURIComponent(userDraft.user.id)}/password`
+          ).invoke({ password: values.password });
+          Message.success(t('admin.message.passwordReset'));
+          setUserDraft(null);
+        }
+      } catch (error) {
+        showUserOpError(error);
+      } finally {
+        setUserSaving(false);
+      }
+    },
+    [loadUsers, showUserOpError, t, userDraft]
+  );
+
+  const setUserStatus = useCallback(
+    (user: AdminUser, next: 'active' | 'disabled') => {
+      const name = user.username || user.id;
+      Modal.confirm({
+        title: next === 'disabled' ? t('admin.userDialog.disableTitle') : t('admin.userDialog.enableTitle'),
+        content:
+          next === 'disabled'
+            ? t('admin.userDialog.disableContent', { name })
+            : t('admin.userDialog.enableContent', { name }),
+        okText: t('admin.userDialog.ok'),
+        cancelText: t('admin.modal.cancel'),
+        okButtonProps: next === 'disabled' ? { status: 'danger' } : undefined,
+        onOk: async () => {
+          try {
+            await httpPut<AdminUser, { status: string }>(
+              `/api/admin/users/${encodeURIComponent(user.id)}/status`
+            ).invoke({ status: next });
+            Message.success(t('admin.message.statusChanged'));
+            await loadUsers();
+          } catch (error) {
+            showUserOpError(error);
+          }
+        },
+      });
+    },
+    [loadUsers, showUserOpError, t]
+  );
+
   if (gate === 'loading') {
     return <Centered notice={t('admin.gate.loading')} />;
   }
@@ -323,6 +407,26 @@ export function AdminApp() {
       title: t('admin.users.lastLogin'),
       dataIndex: 'last_login',
       render: (value: number | null) => formatTime(value),
+    },
+    {
+      title: t('admin.users.actions'),
+      width: 190,
+      render: (_: unknown, record: AdminUser) => (
+        <Space size={4}>
+          <Button size='mini' onClick={() => setUserDraft({ mode: 'reset', user: record })}>
+            {t('admin.users.resetPassword')}
+          </Button>
+          {record.is_primary ? null : record.status === 'active' ? (
+            <Button size='mini' status='danger' onClick={() => setUserStatus(record, 'disabled')}>
+              {t('admin.users.disable')}
+            </Button>
+          ) : (
+            <Button size='mini' status='success' onClick={() => setUserStatus(record, 'active')}>
+              {t('admin.users.enable')}
+            </Button>
+          )}
+        </Space>
+      ),
     },
   ];
 
@@ -391,9 +495,14 @@ export function AdminApp() {
           title={t('admin.users.title')}
           bordered={false}
           extra={
-            <Button size='mini' onClick={() => void loadUsers()}>
-              {t('admin.users.refresh')}
-            </Button>
+            <Space size={8}>
+              <Button size='mini' type='primary' onClick={() => setUserDraft({ mode: 'create' })}>
+                {t('admin.users.createUser')}
+              </Button>
+              <Button size='mini' onClick={() => void loadUsers()}>
+                {t('admin.users.refresh')}
+              </Button>
+            </Space>
           }
         >
           <Table
@@ -455,6 +564,13 @@ export function AdminApp() {
         ownerLabel={selectedUser?.username ?? ''}
         onCancel={() => setDraft(null)}
         onSubmit={saveProvider}
+      />
+
+      <UserModal
+        draft={userDraft}
+        saving={userSaving}
+        onCancel={() => setUserDraft(null)}
+        onSubmit={submitUser}
       />
     </div>
   );
@@ -543,6 +659,84 @@ function ProviderModal(props: {
         </Form.Item>
         <Form.Item label={t('admin.providers.enabled')} field='enabled' triggerPropName='checked'>
           <Switch />
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Create user / reset password dialog
+// ---------------------------------------------------------------------------
+
+const USERNAME_PATTERN = /^[a-zA-Z0-9_-]{3,32}$/;
+const USERNAME_EDGES_PATTERN = /^[-_]|[-_]$/;
+
+function UserModal(props: {
+  draft: UserDraft;
+  saving: boolean;
+  onCancel: () => void;
+  onSubmit: (values: UserFormValues) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const { draft, saving, onCancel, onSubmit } = props;
+  const [form] = Form.useForm<UserFormValues>();
+
+  useEffect(() => {
+    if (draft) form.resetFields();
+  }, [draft, form]);
+
+  if (!draft) return null;
+  const isCreate = draft.mode === 'create';
+
+  return (
+    <Modal
+      visible
+      title={
+        isCreate
+          ? t('admin.userModal.createTitle')
+          : t('admin.userModal.resetTitle', { name: draft.user.username || draft.user.id })
+      }
+      okText={isCreate ? t('admin.userModal.okCreate') : t('admin.userModal.okReset')}
+      cancelText={t('admin.modal.cancel')}
+      confirmLoading={saving}
+      onCancel={onCancel}
+      onOk={() => {
+        void form.validate().then((values) => onSubmit(values));
+      }}
+      autoFocus={false}
+      focusLock
+    >
+      <Form form={form} layout='vertical'>
+        {isCreate && (
+          <Form.Item
+            label={t('admin.userModal.username')}
+            field='username'
+            rules={[
+              { required: true, message: t('admin.userModal.usernameRequired') },
+              {
+                validator: (value: string, callback: (message?: string) => void) =>
+                  callback(
+                    !USERNAME_PATTERN.test(value || '') || USERNAME_EDGES_PATTERN.test(value || '')
+                      ? t('admin.userModal.usernameInvalid')
+                      : undefined
+                  ),
+              },
+            ]}
+          >
+            <Input placeholder={t('admin.userModal.usernamePlaceholder')} />
+          </Form.Item>
+        )}
+        <Form.Item
+          label={t('admin.userModal.password')}
+          field='password'
+          rules={[
+            { required: true, message: t('admin.userModal.passwordRequired') },
+            { minLength: 8, message: t('admin.userModal.passwordInvalid') },
+          ]}
+          extra={isCreate ? t('admin.userModal.passwordHint') : undefined}
+        >
+          <Input.Password placeholder={t('admin.userModal.passwordPlaceholder')} />
         </Form.Item>
       </Form>
     </Modal>

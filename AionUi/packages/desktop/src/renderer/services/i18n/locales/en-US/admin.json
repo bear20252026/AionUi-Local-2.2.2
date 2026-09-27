@@ -31,7 +31,12 @@
     "adminTag": "Admin",
     "active": "Active",
     "disabled": "Disabled",
-    "empty": "No users"
+    "empty": "No users",
+    "createUser": "Create user",
+    "resetPassword": "Reset password",
+    "disable": "Disable",
+    "enable": "Enable",
+    "actions": "Actions"
   },
   "providers": {
     "title": "Model Providers",
@@ -75,6 +80,32 @@
   "message": {
     "created": "Model provider created",
     "updated": "Model provider updated",
-    "deleted": "Deleted"
+    "deleted": "Deleted",
+    "userCreated": "User created",
+    "passwordReset": "Password reset — their sessions were signed out",
+    "statusChanged": "Status updated",
+    "userOpFailed": "Operation failed."
+  },
+  "userModal": {
+    "createTitle": "Create user",
+    "okCreate": "Create",
+    "resetTitle": "Reset password · {{name}}",
+    "okReset": "Reset",
+    "username": "Username",
+    "usernamePlaceholder": "Letters, digits, - or _ (3–32 chars)",
+    "usernameRequired": "Please enter a username",
+    "usernameInvalid": "Letters, digits, - and _ only; 3–32 chars; cannot start or end with - or _",
+    "password": "Password",
+    "passwordPlaceholder": "At least 8 characters",
+    "passwordRequired": "Please enter a password",
+    "passwordInvalid": "At least 8 characters",
+    "passwordHint": "At least 8 characters. Share it with the user after creating."
+  },
+  "userDialog": {
+    "disableTitle": "Disable account",
+    "disableContent": "Disable \"{{name}}\"? All their login sessions will be signed out immediately.",
+    "enableTitle": "Enable account",
+    "enableContent": "Restore login for \"{{name}}\"?",
+    "ok": "Confirm"
   }
 }

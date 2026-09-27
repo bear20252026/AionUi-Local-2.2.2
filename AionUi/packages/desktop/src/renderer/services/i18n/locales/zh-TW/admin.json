@@ -31,7 +31,12 @@
     "adminTag": "管理員",
     "active": "啟用",
     "disabled": "停用",
-    "empty": "暫無使用者"
+    "empty": "暫無使用者",
+    "createUser": "新增使用者",
+    "resetPassword": "重設密碼",
+    "disable": "停用",
+    "enable": "啟用",
+    "actions": "操作"
   },
   "providers": {
     "title": "模型服務",
@@ -75,6 +80,32 @@
   "message": {
     "created": "已為該使用者建立模型服務",
     "updated": "模型服務已更新",
-    "deleted": "已刪除"
+    "deleted": "已刪除",
+    "userCreated": "使用者已建立",
+    "passwordReset": "密碼已重置，該帳號的登入已全部失效",
+    "statusChanged": "狀態已更新",
+    "userOpFailed": "操作失敗。"
+  },
+  "userModal": {
+    "createTitle": "新增使用者",
+    "okCreate": "建立",
+    "resetTitle": "重設密碼 · {{name}}",
+    "okReset": "重設",
+    "username": "使用者名稱",
+    "usernamePlaceholder": "3–32 位，字母、數字、- 或 _",
+    "usernameRequired": "請輸入使用者名稱",
+    "usernameInvalid": "僅限字母、數字、-、_，3–32 位，且不以 - 或 _ 開頭或結尾",
+    "password": "密碼",
+    "passwordPlaceholder": "至少 8 位",
+    "passwordRequired": "請輸入密碼",
+    "passwordInvalid": "至少 8 位",
+    "passwordHint": "至少 8 位，建立後請告知該使用者。"
+  },
+  "userDialog": {
+    "disableTitle": "停用帳號",
+    "disableContent": "確定停用「{{name}}」嗎？該帳號的所有登入工作階段將立即失效。",
+    "enableTitle": "啟用帳號",
+    "enableContent": "確定恢復「{{name}}」的登入嗎？",
+    "ok": "確認"
   }
 }

@@ -31,7 +31,12 @@
     "adminTag": "Yönetici",
     "active": "Etkin",
     "disabled": "Devre dışı",
-    "empty": "Kullanıcı yok"
+    "empty": "Kullanıcı yok",
+    "createUser": "Kullanıcı oluştur",
+    "resetPassword": "Şifreyi sıfırla",
+    "disable": "Devre dışı bırak",
+    "enable": "Etkinleştir",
+    "actions": "İşlemler"
   },
   "providers": {
     "title": "Model sağlayıcıları",
@@ -75,6 +80,32 @@
   "message": {
     "created": "Model sağlayıcısı oluşturuldu",
     "updated": "Model sağlayıcısı güncellendi",
-    "deleted": "Silindi"
+    "deleted": "Silindi",
+    "userCreated": "Kullanıcı oluşturuldu",
+    "passwordReset": "Şifre sıfırlandı — oturumlar kapatıldı",
+    "statusChanged": "Durum güncellendi",
+    "userOpFailed": "İşlem başarısız."
+  },
+  "userModal": {
+    "createTitle": "Kullanıcı oluştur",
+    "okCreate": "Oluştur",
+    "resetTitle": "Şifreyi sıfırla · {{name}}",
+    "okReset": "Sıfırla",
+    "username": "Kullanıcı adı",
+    "usernamePlaceholder": "3–32 karakter: harf, rakam, - veya _",
+    "usernameRequired": "Kullanıcı adını girin",
+    "usernameInvalid": "Yalnızca harf, rakam, - ve _; 3–32 karakter; - veya _ ile başlamaz/bitmez",
+    "password": "Şifre",
+    "passwordPlaceholder": "En az 8 karakter",
+    "passwordRequired": "Şifreyi girin",
+    "passwordInvalid": "En az 8 karakter",
+    "passwordHint": "En az 8 karakter. Oluşturduktan sonra kullanıcıya bildirin."
+  },
+  "userDialog": {
+    "disableTitle": "Hesabı devre dışı bırak",
+    "disableContent": "\"{{name}}\" devre dışı bırakılsın mı? Tüm oturumları anında kapatılır.",
+    "enableTitle": "Hesabı etkinleştir",
+    "enableContent": "\"{{name}}\" oturumu geri açılsın mı?",
+    "ok": "Onayla"
   }
 }

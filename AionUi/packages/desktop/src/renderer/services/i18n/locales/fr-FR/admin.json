@@ -31,7 +31,12 @@
     "adminTag": "Administrateur",
     "active": "Actif",
     "disabled": "Désactivé",
-    "empty": "Aucun utilisateur"
+    "empty": "Aucun utilisateur",
+    "createUser": "Créer un utilisateur",
+    "resetPassword": "Réinitialiser le mot de passe",
+    "disable": "Désactiver",
+    "enable": "Activer",
+    "actions": "Actions"
   },
   "providers": {
     "title": "Fournisseurs de modèles",
@@ -75,6 +80,32 @@
   "message": {
     "created": "Fournisseur de modèles créé",
     "updated": "Fournisseur de modèles mis à jour",
-    "deleted": "Supprimé"
+    "deleted": "Supprimé",
+    "userCreated": "Utilisateur créé",
+    "passwordReset": "Mot de passe réinitialisé — sessions déconnectées",
+    "statusChanged": "Statut mis à jour",
+    "userOpFailed": "Échec de l'opération."
+  },
+  "userModal": {
+    "createTitle": "Créer un utilisateur",
+    "okCreate": "Créer",
+    "resetTitle": "Réinitialiser le mot de passe · {{name}}",
+    "okReset": "Réinitialiser",
+    "username": "Nom d'utilisateur",
+    "usernamePlaceholder": "3–32 caractères : lettres, chiffres, - ou _",
+    "usernameRequired": "Saisissez le nom d'utilisateur",
+    "usernameInvalid": "Lettres, chiffres, - et _ uniquement ; 3–32 caractères ; ne commence ni ne finit par - ou _",
+    "password": "Mot de passe",
+    "passwordPlaceholder": "Au moins 8 caractères",
+    "passwordRequired": "Saisissez le mot de passe",
+    "passwordInvalid": "Au moins 8 caractères",
+    "passwordHint": "Au moins 8 caractères. Communiquez-le à l'utilisateur ensuite."
+  },
+  "userDialog": {
+    "disableTitle": "Désactiver le compte",
+    "disableContent": "Désactiver « {{name}} » ? Toutes ses sessions seront déconnectées immédiatement.",
+    "enableTitle": "Activer le compte",
+    "enableContent": "Réactiver l'accès de « {{name}} » ?",
+    "ok": "Confirmer"
   }
 }
