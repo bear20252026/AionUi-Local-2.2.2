@@ -35,6 +35,9 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
   const lastNonSettingsPathRef = useRef('/guid');
   const showLogout =
     typeof window !== 'undefined' && !(window as { electronAPI?: unknown }).electronAPI && status === 'authenticated';
+  // The admin console only exists in browser WebUI mode (the /admin clean URL is
+  // served by web-host), so reuse the same visibility gate as the logout entry.
+  const showAdminConsole = showLogout;
 
   useEffect(() => {
     if (!pathname.startsWith('/settings')) {
@@ -255,6 +258,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
         onThemeToggle={handleQuickThemeToggle}
         showLogout={showLogout}
         onLogoutClick={handleLogout}
+        showAdminConsole={showAdminConsole}
       />
     </div>
   );

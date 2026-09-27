@@ -7,9 +7,10 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tooltip } from '@arco-design/web-react';
-import { ArrowCircleLeft, CloseOne, Moon, SettingTwo, SunOne } from '@icon-park/react';
+import { ArrowCircleLeft, CloseOne, Moon, SettingTwo, SunOne, UserBusiness } from '@icon-park/react';
 import classNames from 'classnames';
 import { iconColors } from '@renderer/styles/colors';
+import { cleanupSiderTooltips } from '@renderer/utils/ui/siderTooltip';
 import type { SiderTooltipProps } from '@renderer/utils/ui/siderTooltip';
 
 interface SiderFooterProps {
@@ -22,6 +23,7 @@ interface SiderFooterProps {
   onThemeToggle: () => void;
   showLogout?: boolean;
   onLogoutClick?: () => void;
+  showAdminConsole?: boolean;
 }
 
 const SiderFooter: React.FC<SiderFooterProps> = ({
@@ -34,6 +36,7 @@ const SiderFooter: React.FC<SiderFooterProps> = ({
   onThemeToggle,
   showLogout = false,
   onLogoutClick,
+  showAdminConsole = false,
 }) => {
   const { t } = useTranslation();
 
@@ -79,6 +82,37 @@ const SiderFooter: React.FC<SiderFooterProps> = ({
             </span>
           </div>
         </Tooltip>
+        {showAdminConsole && (
+          <Tooltip {...siderTooltipProps} content={t('common.adminConsole')} position='right'>
+            <div
+              onClick={() => {
+                window.location.assign('/admin');
+                // In desktop (electron) mode the entry is hidden entirely, so a plain
+                // assign to the in-app clean URL is safe. The admin console has its own
+                // identity gate: non-admin sessions get the forbidden screen there.
+                cleanupSiderTooltips();
+              }}
+              className={classNames(
+                'h-32px flex items-center rd-0.5rem cursor-pointer transition-colors hover:bg-[rgba(var(--primary-6),0.14)] active:bg-fill-2',
+                collapsed ? 'w-full justify-center' : 'flex-1 min-w-0 justify-start gap-10px px-14px',
+                isMobile && 'sider-footer-btn-mobile'
+              )}
+            >
+              <span className='size-20px flex items-center justify-center shrink-0'>
+                <UserBusiness
+                  theme='outline'
+                  size='16'
+                  fill={iconColors.primary}
+                  className='block leading-none'
+                  style={{ lineHeight: 0 }}
+                />
+              </span>
+              <span className='collapsed-hidden text-t-primary text-14px font-[500] leading-24px truncate'>
+                {t('common.adminConsole')}
+              </span>
+            </div>
+          </Tooltip>
+        )}
         {showLogout && onLogoutClick && (
           <Tooltip {...siderTooltipProps} content={t('settings.googleLogout')} position='right'>
             <div

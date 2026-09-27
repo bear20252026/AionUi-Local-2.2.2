@@ -272,6 +272,7 @@ export type I18nKey =
   | 'common.about'
   | 'common.add'
   | 'common.added'
+  | 'common.adminConsole'
   | 'common.agentMode'
   | 'common.aiAssistant'
   | 'common.back'
