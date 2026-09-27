@@ -513,6 +513,13 @@ async fn login_handler(
 
     let user = found_user.ok_or_else(|| ApiError::Unauthorized("Invalid username or password".into()))?;
 
+    // Disabled accounts may present perfectly valid credentials — refuse only
+    // after the password check so the error reveals nothing to strangers.
+    // (Existing tokens were already revoked by the status transition.)
+    if user.status == UserStatus::Disabled {
+        return Err(ApiError::Forbidden("This account has been disabled".into()));
+    }
+
     let token = state
         .jwt_service
         .sign_with_session_generation(

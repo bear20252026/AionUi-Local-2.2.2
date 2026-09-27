@@ -326,6 +326,31 @@ async fn t4_4_login_missing_fields() {
 }
 
 #[tokio::test]
+async fn t4_5_login_rejected_for_disabled_account() {
+    let (app, ctx) = test_app().await;
+    create_test_user(&ctx, "bob", "Str0ngPass!23").await;
+
+    // Sanity: the same credentials work while the account is active.
+    let req = json_post("/login", r#"{"username":"bob","password":"Str0ngPass!23"}"#);
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Disable the account (the same transition the admin console performs,
+    // which also revokes existing sessions via session_generation).
+    let bob = ctx.user_repo.find_by_username("bob").await.unwrap().unwrap();
+    ctx.user_repo.set_status(&bob.id, UserStatus::Disabled).await.unwrap();
+
+    // Valid credentials, but the account is disabled → forbidden, and the
+    // response must not carry a fresh token.
+    let req = json_post("/login", r#"{"username":"bob","password":"Str0ngPass!23"}"#);
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let json = body_json(resp).await;
+    assert_eq!(json["success"], false);
+    assert_eq!(json["code"], "FORBIDDEN");
+}
+
+#[tokio::test]
 async fn login_rejects_aionpro_mode() {
     let (app, ctx) = test_app_with_options_and_hook(false, Some("bootstrap-secret"), true, None).await;
     create_test_user(&ctx, "admin", "StrongP@ss1").await;
